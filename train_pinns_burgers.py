@@ -5,14 +5,27 @@ import numpy as np
 import time
 from pyDOE import lhs         #Latin Hypercube Sampling
 import scipy.io
+import argparse
 
 
 from src.NN_models import *
 from src.pinns_burgers_model import *
 from src.plotter import *
 
+# Default parameters
+parser = argparse.ArgumentParser('Burgers PINNS')
+parser.add_argument('--niters', type=int, default=200)
+parser.add_argument('--lr'    , type=float, default=0.01)
+parser.add_argument('--optim' , type=str, default='lbfgs', choices=['adam', 'lbfgs'])
 
+parser.add_argument('--N_u' , type=int  , default=100, help="Total number of data points for u")
+parser.add_argument('--N_f' , type=int  , default=10000, help="Total number of collocation points")
 
+parser.add_argument('--lr_freq' , type=int  , default=100, help="how often to decrease lr")
+parser.add_argument('--val_freq', type=int, default=50, help="how often to run model on validation set")
+parser.add_argument('--print_freq', type=int, default=10, help="how often to print results")
+
+args = parser.parse_args()
 
 # Data Prep
 data = scipy.io.loadmat('Data/burgers_shock_mu_01_pi.mat')
@@ -65,21 +78,27 @@ def trainingdata(N_u,N_f):
 
 
 # Parameter list
-N_u = 100 #Total number of data points for 'u'
-N_f = 10000 #Total number of collocation points
+N_u = args.N_u
+N_f = args.N_f
 X_f_train, X_u_train, u_train = trainingdata(N_u,N_f)
 
 layers = np.array([2,20,20,20,20,20,20,20,20,1]) #8 hidden layers
 net = MLP(layers)
 # net.to(device)
 
-lr = 0.01
-optim = optim.Adam(net.parameters(), lr=lr, weight_decay=0)
-niters = 4000
+lr = args.lr
+if args.optim=='adam':
+    optim = optim.Adam(net.parameters(), lr=lr, weight_decay=0)
+elif args.optim=='lbfgs':
+    optim = torch.optim.LBFGS(net.parameters(), lr=lr, max_iter=20, max_eval=500, line_search_fn="strong_wolfe")
+else:
+    print('no valid optimizer')
+    exit(1)
 
-val_freq = 500
-print_freq = 50
-lr_freq = 3000
+niters = args.niters
+val_freq = args.val_freq
+print_freq = args.print_freq
+lr_freq = args.lr_freq
 
 
 
@@ -91,14 +110,23 @@ if __name__ == '__main__':
 
     net.train()
     for itr in range(1, niters + 1):
-        optim.zero_grad()
-        loss = loss_burgers(X_u_train, u_train, X_f_train, net)
-        loss.backward()
-        optim.step()
+        if args.optim == 'adam':
+            optim.zero_grad()
+            loss = loss_burgers(X_u_train, u_train, X_f_train, net)
+            loss.backward()
+            optim.step()
+        else: # lbfgs
+            def closure():
+                optim.zero_grad()
+                loss = loss_burgers(X_u_train, u_train, X_f_train, net)
+                loss.backward()
+                return loss
+            optim.step(closure)
 
 
         # print
         if itr % print_freq == 0:
+            loss = loss_burgers(X_u_train, u_train, X_f_train, net)
             print(("%06d    " + "%1.4e    " + "%5s") %(itr, loss, "Train"))
 
         # validation
