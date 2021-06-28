@@ -23,10 +23,10 @@ def loss_burgers(x, y, x_to_train_f, net, nu = 0.01/pi):
 
     u = net.forward(g)
     # gradient
-    u_x_t = autograd.grad(u, g, torch.ones_like(u), retain_graph=True, create_graph=True)[0]  # TODO: check device
+    u_x_t = autograd.grad(u, g, torch.ones_like(u).to(g.device), retain_graph=True, create_graph=True)[0]  # TODO: check device
     # Hessian
     num = x_to_train_f.shape[0]
-    vec = torch.cat([torch.ones(num,1),torch.zeros(num,1)], dim=1)
+    vec = torch.cat([torch.ones(num,1),torch.zeros(num,1)], dim=1).to(g.device)
     u_xx_tt = autograd.grad(u_x_t, g, vec, create_graph=True)[0]
 
     u_x = u_x_t[:, [0]]
@@ -38,7 +38,13 @@ def loss_burgers(x, y, x_to_train_f, net, nu = 0.01/pi):
 
     loss = loss_BC + loss_PDE
 
-    return loss
+    # calculate residual
+    res_PDE = f
+    res_BC  = net.forward(x) - y
+    res = torch.cat((res_PDE,res_BC), dim=0)
+    res = torch.flatten(res)
+
+    return loss, res
 
 
 if __name__ == "__main__":
@@ -51,5 +57,5 @@ if __name__ == "__main__":
     layers = np.array([2, 50, 50, 1])
     net = MLP(layers)
 
-    print('loss = ', loss_burgers(x, y, x_to_train_f, net, nu = 0.01/pi))
+    print('loss = ', loss_burgers(x, y, x_to_train_f, net, nu = 0.01/pi)[0])
 

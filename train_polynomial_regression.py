@@ -37,14 +37,14 @@ def get_batch(batch_size=32):
 
 # Define model
 fc = torch.nn.Linear(W_target.size(0), 1)
-max_iters = 2000
+max_iters = 1800
 lr = 0.01
 optimizer_anderson = torch.optim.SGD(fc.parameters(), lr=lr, weight_decay=0)
 accelerate(optimizer_anderson, frequency = 5)
 resample_frequency = 400
 
 batch_x, batch_y = get_batch(batch_size=64)
-for idx in range(max_iters):
+for idx in range(1,max_iters+1):
     # training
 
     def closure():

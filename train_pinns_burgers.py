@@ -14,12 +14,12 @@ from src.plotter import *
 
 # Default parameters
 parser = argparse.ArgumentParser('Burgers PINNS')
-parser.add_argument('--niters', type=int, default=200)
+parser.add_argument('--niters', type=int, default=2000)
 parser.add_argument('--lr'    , type=float, default=0.01)
 parser.add_argument('--optim' , type=str, default='lbfgs', choices=['adam', 'lbfgs'])
 
 parser.add_argument('--N_u' , type=int  , default=100, help="Total number of data points for u")
-parser.add_argument('--N_f' , type=int  , default=10000, help="Total number of collocation points")
+parser.add_argument('--N_f' , type=int  , default=4096, help="Total number of collocation points")
 
 parser.add_argument('--lr_freq' , type=int  , default=100, help="how often to decrease lr")
 parser.add_argument('--val_freq', type=int, default=50, help="how often to run model on validation set")
@@ -112,13 +112,13 @@ if __name__ == '__main__':
     for itr in range(1, niters + 1):
         if args.optim == 'adam':
             optim.zero_grad()
-            loss = loss_burgers(X_u_train, u_train, X_f_train, net)
+            loss, _ = loss_burgers(X_u_train, u_train, X_f_train, net)
             loss.backward()
             optim.step()
         else: # lbfgs
             def closure():
                 optim.zero_grad()
-                loss = loss_burgers(X_u_train, u_train, X_f_train, net)
+                loss, _ = loss_burgers(X_u_train, u_train, X_f_train, net)
                 loss.backward()
                 return loss
             optim.step(closure)
@@ -126,7 +126,7 @@ if __name__ == '__main__':
 
         # print
         if itr % print_freq == 0:
-            loss = loss_burgers(X_u_train, u_train, X_f_train, net)
+            loss = loss_burgers(X_u_train, u_train, X_f_train, net)[0]
             print(("%06d    " + "%1.4e    " + "%5s") %(itr, loss, "Train"))
 
         # validation
@@ -152,7 +152,7 @@ if __name__ == '__main__':
     elapsed = time.time() - start_time
     print('Training time: %.2f' % (elapsed))
 
-    solutionplot(u_pred, X_u_train, u_train, X, T, x, t, usol)
+    solutionplot(u_pred, X_u_train, u_train, X, T, x, t, usol) # TODO: check input
 
 
 

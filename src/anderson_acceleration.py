@@ -2,6 +2,7 @@ from __future__ import print_function
 from itertools import count
 import sys
 from types import MethodType
+from collections import deque
 
 
 
@@ -47,7 +48,7 @@ def anderson_qr_fun(X, R, relaxation=1.0, regularization = 0.0):
 
 
 def accelerate(optimizer, relaxation: float = 1.0, regularization: float = 0.0, history_depth: int = 15,
-               store_each_nth: int = 10, frequency: int = 10, resample_frequency: int = 400):
+               store_each_nth: int = 10, frequency: int = 10):
     # acceleration options
     optimizer.acc_relaxation = relaxation
     optimizer.acc_regularization = regularization
@@ -55,15 +56,14 @@ def accelerate(optimizer, relaxation: float = 1.0, regularization: float = 0.0, 
     optimizer.acc_history_depth = history_depth  # history size
     optimizer.acc_store_each_nth = store_each_nth  # frequency to update history
     optimizer.acc_frequency = frequency  # frequency to accelerate
-    optimizer.resample_frequency = resample_frequency  # resample frequency important for tracking history
 
     # TODO: add averaging or other methods
 
     # acceleration history
     optimizer.acc_call_counter = 0
     optimizer.acc_store_counter = 0
-    optimizer.acc_param_hist = []
-    optimizer.res_hist = []
+    optimizer.acc_param_hist = [deque([], maxlen=optimizer.acc_history_depth) for _ in optimizer.param_groups]
+    optimizer.res_hist = deque([], maxlen=optimizer.acc_history_depth)
 
     # redefine step of the optimizer
     optimizer.orig_step = optimizer.step
@@ -76,15 +76,15 @@ def accelerate(optimizer, relaxation: float = 1.0, regularization: float = 0.0, 
 
 # TODO: add acceeleration removal
 
+
 def clear_hist(optimizer):
     # clear history when resampling
     print('clear history at ', optimizer.acc_store_counter)
-    optimizer.acc_param_hist = []
-    optimizer.res_hist = []
-
+    optimizer.acc_param_hist = [deque([], maxlen=optimizer.acc_history_depth) for _ in optimizer.param_groups]
+    optimizer.res_hist = deque([], maxlen=optimizer.acc_history_depth)
 
 def accelerated_step(self, closure):
-    # test, single parameter group! currently doesn't support spliting parameters into multiple groups
+    # check for bugs
     if closure is None:
         print('Unable to perform acceleration without closure')
         sys.exit()
@@ -94,34 +94,36 @@ def accelerated_step(self, closure):
     res, loss = closure()  # calculate the residual
     # add current parameters to the history
     self.acc_store_counter += 1
-    if self.acc_store_counter % self.acc_store_each_nth == 0 and len(self.res_hist) < self.acc_history_depth:
-        for group in self.param_groups:
-            self.acc_param_hist.append(
-                parameters_to_vector(group['params']).detach())  # network parameters, single group!!
+    if self.acc_store_counter % self.acc_store_each_nth == 0:
+        for group, group_hist in zip(self.param_groups, self.acc_param_hist):
+            group_hist.append(parameters_to_vector(group['params']).detach())   # network parameters
 
         self.res_hist.append(res.detach())  # residual from current network parameters
 
     # perform acceleration
     self.acc_call_counter += 1
     if self.acc_call_counter % self.acc_frequency == 0:
-        if len(self.acc_param_hist) >= 3:
-            # make matrix of updates from the history list
-            X = torch.stack(list(self.acc_param_hist), dim=1)
-            R = torch.stack(list(self.res_hist), dim=1)
-            acc_param = anderson_qr_fun(X, R, self.acc_relaxation, self.acc_regularization)
+        for group, group_hist in zip(self.param_groups, self.acc_param_hist):
+            if len(group_hist) >= 3:
+                # make matrix of updates from the history list
+                X = torch.stack(list(group_hist), dim=1)
+                R = torch.stack(list(self.res_hist), dim=1)
+                acc_param = anderson_qr_fun(X, R, self.acc_relaxation, self.acc_regularization)
 
-            # check performance
-            for group in self.param_groups:
+                # check performance
                 vector_to_parameters(acc_param, group['params'])
-            new_res, new_loss = closure()
-            if new_loss < loss:
-                self.acc_param_hist.pop()
-                self.acc_param_hist.append(acc_param)
-                self.res_hist.pop()
-                self.res_hist.append(new_res.detach())
+                _, new_loss = closure()
+                if new_loss < loss:
+                    group_hist.pop()
+                    group_hist.append(acc_param)
 
-                print(
-                    'acceleration working at step %5d, improve loss by %.5f' % (self.acc_call_counter, loss - new_loss))
-            else:
-                # revert to non-accelerated params
-                vector_to_parameters(self.acc_param_hist[-1], group['params'])
+                else:
+                    # revert to non-accelerated params
+                    vector_to_parameters(group_hist[-1], group['params'])
+
+        final_res, final_loss = closure()
+        if final_loss < loss:
+            print('acceleration working at step %5d, improve loss by %.5f' % (self.acc_call_counter, loss - final_loss))
+
+            self.res_hist.pop()
+            self.res_hist.append(final_res.detach())
