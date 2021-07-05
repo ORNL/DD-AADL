@@ -9,7 +9,7 @@ import numpy as np
 
 
 
-def solutionplot(u_pred, X_u_train, u_train, X, T, x, t, usol):
+def solutionplot_burgers(u_pred, X_u_train, u_train, X, T, x, t, usol):
     fig, ax = plt.subplots()
     ax.axis('off')
 
@@ -77,3 +77,34 @@ def solutionplot(u_pred, X_u_train, u_train, X, T, x, t, usol):
     ax.set_title('$t = 0.75s$', fontsize=10)
 
     plt.savefig('Burgers.png', dpi=500)
+
+
+def solutionplot_helmholtz(u_pred,X_u_train,u_train, usol, x_1, x_2):
+
+    #Ground truth
+    fig_1 = plt.figure(1, figsize=(18, 5))
+    plt.subplot(1, 3, 1)
+    plt.pcolor(x_1, x_2, usol, cmap='jet')
+    plt.colorbar()
+    plt.xlabel(r'$x_1$', fontsize=18)
+    plt.ylabel(r'$x_2$', fontsize=18)
+    plt.title('Ground Truth $u(x_1,x_2)$', fontsize=15)
+
+    # Prediction
+    plt.subplot(1, 3, 2)
+    plt.pcolor(x_1, x_2, u_pred, cmap='jet')
+    plt.colorbar()
+    plt.xlabel(r'$x_1$', fontsize=18)
+    plt.ylabel(r'$x_2$', fontsize=18)
+    plt.title('Predicted $\hat u(x_1,x_2)$', fontsize=15)
+
+    # Error
+    plt.subplot(1, 3, 3)
+    plt.pcolor(x_1, x_2, np.abs(usol - u_pred), cmap='jet')
+    plt.colorbar()
+    plt.xlabel(r'$x_1$', fontsize=18)
+    plt.ylabel(r'$x_2$', fontsize=18)
+    plt.title(r'Absolute error $|u(x_1,x_2)- \hat u(x_1,x_2)|$', fontsize=15)
+    plt.tight_layout()
+
+    plt.savefig('Helmholtz_non_stiff.png', dpi = 500, bbox_inches='tight')

@@ -9,14 +9,14 @@ import argparse
 
 
 from src.NN_models import *
-from src.pinns_burgers_model import *
+from src.pinns_helmholtz_model import *
 from src.plotter import *
 
 # Default parameters
-parser = argparse.ArgumentParser('Burgers PINNS')
+parser = argparse.ArgumentParser('Helmholtz PINNS')
 parser.add_argument('--niters', type=int, default=2000)
 parser.add_argument('--lr'    , type=float, default=0.01)
-parser.add_argument('--optim' , type=str, default='lbfgs', choices=['adam', 'lbfgs'])
+parser.add_argument('--optim' , type=str, default='adam', choices=['adam', 'lbfgs'])
 
 parser.add_argument('--N_u' , type=int  , default=100, help="Total number of data points for u")
 parser.add_argument('--N_f' , type=int  , default=4096, help="Total number of collocation points")
@@ -28,61 +28,62 @@ parser.add_argument('--print_freq', type=int, default=10, help="how often to pri
 args = parser.parse_args()
 
 # Data Prep
-data = scipy.io.loadmat('Data/burgers_shock_mu_01_pi.mat')
-x = data['x']                                   # 256 points between -1 and 1 [256x1]
-t = data['t']                                   # 100 time points between 0 and 1 [100x1]
-usol = data['usol']                             # solution of 256x100 grid points
+x_1 = np.linspace(-1,1,256)  # 256 points between -1 and 1 [256x1]
+x_2 = np.linspace(1,-1,256)  # 256 points between 1 and -1 [256x1]
+X, Y = np.meshgrid(x_1,x_2)
 
-X, T = np.meshgrid(x,t)
+# Test data
+X_u_test = np.hstack((X.flatten(order='F')[:,None], Y.flatten(order='F')[:,None]))
 
-# test data
-X_u_test = np.hstack((X.flatten()[:,None], T.flatten()[:,None])); X_u_test = torch.from_numpy(X_u_test)
+a_1 = 1
+a_2 = 1
+usol = np.sin(a_1 * np.pi * X) * np.sin(a_2 * np.pi * Y) #solution chosen for convinience
+u_true = torch.from_numpy(usol.flatten('F')[:,None]).float()
+
 # Domain bounds
-lb = X_u_test[0]  # [-1. 0.]
-ub = X_u_test[-1] # [1.  0.99]
-u_true = usol.flatten('F')[:,None]; u = torch.from_numpy(u_true)
+lb = np.array([-1, -1]) #lower bound
+ub = np.array([1, 1])  #upper bound
 
-def trainingdata(N_u,N_f):
 
-    '''Boundary Conditions'''
 
-    #Initial Condition -1 =< x =<1 and t = 0
-    leftedge_x = np.hstack((X[0,:][:,None], T[0,:][:,None])) #L1
-    leftedge_u = usol[:,0][:,None]
+# training data
+def trainingdata(N_u, N_f):
+    leftedge_x = np.hstack((X[:, 0][:, None], Y[:, 0][:, None]))
+    leftedge_u = usol[:, 0][:, None]
 
-    #Boundary Condition x = -1 and 0 =< t =<1
-    bottomedge_x = np.hstack((X[:,0][:,None], T[:,0][:,None])) #L2
-    bottomedge_u = usol[-1,:][:,None]
+    rightedge_x = np.hstack((X[:, -1][:, None], Y[:, -1][:, None]))
+    rightedge_u = usol[:, -1][:, None]
 
-    #Boundary Condition x = 1 and 0 =< t =<1
-    topedge_x = np.hstack((X[:,-1][:,None], T[:,0][:,None])) #L3
-    topedge_u = usol[0,:][:,None]
+    topedge_x = np.hstack((X[0, :][:, None], Y[0, :][:, None]))
+    topedge_u = usol[0, :][:, None]
 
-    all_X_u_train = np.vstack([leftedge_x, bottomedge_x, topedge_x]) # X_u_train [456,2] (456 = 256(L1)+100(L2)+100(L3))
-    all_u_train = np.vstack([leftedge_u, bottomedge_u, topedge_u])   #corresponding u [456x1]
+    bottomedge_x = np.hstack((X[-1, :][:, None], Y[-1, :][:, None]))
+    bottomedge_u = usol[-1, :][:, None]
 
-    #choose random N_u points for training
+    all_X_u_train = np.vstack([leftedge_x, rightedge_x, bottomedge_x, topedge_x])
+    all_u_train = np.vstack([leftedge_u, rightedge_u, bottomedge_u, topedge_u])
+
+    # choose random N_u points for training
     idx = np.random.choice(all_X_u_train.shape[0], N_u, replace=False)
 
-    X_u_train = all_X_u_train[idx, :] #choose indices from  set 'idx' (x,t)
-    u_train = all_u_train[idx,:]      #choose corresponding u
+    X_u_train = all_X_u_train[idx[0:N_u], :]  # choose indices from  set 'idx' (x,t)
+    u_train = all_u_train[idx[0:N_u], :]  # choose corresponding u
 
     '''Collocation Points'''
 
     # Latin Hypercube sampling for collocation points
     # N_f sets of tuples(x,t)
-    X_f_train = lb + (ub-lb)*lhs(2,N_f)
-    X_f_train = np.vstack((X_f_train, X_u_train)) # append training points to collocation points
+    X_f = lb + (ub - lb) * lhs(2, N_f)
+    X_f_train = np.vstack((X_f, X_u_train))  # append training points to collocation points
 
     return torch.from_numpy(X_f_train).float(), torch.from_numpy(X_u_train).float(), torch.from_numpy(u_train).float()
-
 
 # Parameter list
 N_u = args.N_u
 N_f = args.N_f
 X_f_train, X_u_train, u_train = trainingdata(N_u,N_f)
 
-layers = np.array([2,20,20,20,20,20,20,20,20,1]) #8 hidden layers
+layers = np.array([2, 50, 50, 50, 1]) #3 hidden layers
 net = MLP(layers)
 # net.to(device)
 
@@ -101,8 +102,6 @@ print_freq = args.print_freq
 lr_freq = args.lr_freq
 
 
-
-
 if __name__ == '__main__':
     start_time = time.time()   # TODO: implement time per iteration
 
@@ -112,13 +111,13 @@ if __name__ == '__main__':
     for itr in range(1, niters + 1):
         if args.optim == 'adam':
             optim.zero_grad()
-            loss, _ = loss_burgers(X_u_train, u_train, X_f_train, net)
+            _, loss = loss_helmholtz(X_u_train, u_train, X_f_train, net)
             loss.backward()
             optim.step()
         else: # lbfgs
             def closure():
                 optim.zero_grad()
-                loss, _ = loss_burgers(X_u_train, u_train, X_f_train, net)
+                _, loss = loss_helmholtz(X_u_train, u_train, X_f_train, net)
                 loss.backward()
                 return loss
             optim.step(closure)
@@ -126,21 +125,18 @@ if __name__ == '__main__':
 
         # print
         if itr % print_freq == 0:
-            loss = loss_burgers(X_u_train, u_train, X_f_train, net)[0]
+            loss = loss_helmholtz(X_u_train, u_train, X_f_train, net)[1]
             print(("%06d    " + "%1.4e    " + "%5s") %(itr, loss, "Train"))
 
         # validation
         if itr % val_freq == 0 or itr == niters:
-            net.eval()
             u_pred = net.forward(X_u_test)
-            err = torch.linalg.norm((u-u_pred),2)/torch.linalg.norm(u,2)
+            err = torch.linalg.norm((u_true-u_pred),2)/torch.linalg.norm(u_true,2)
 
             u_pred = u_pred.cpu().detach().numpy()
-            u_pred = np.reshape(u_pred, (256, 100), order='F')
+            u_pred = np.reshape(u_pred, (256, 256), order='F')
 
             print(("%06d    " + "%1.4e    " + "%5s") % (itr, err, "Eval"))
-
-            net.train()
 
         # shrink step size
         if itr % lr_freq == 0:
@@ -152,8 +148,8 @@ if __name__ == '__main__':
     elapsed = time.time() - start_time
     print('Training time: %.2f' % (elapsed))
 
-    solutionplot_burgers(u_pred, X_u_train, u_train, X, T, x, t, usol) # TODO: check input
-
+    # TODO: add plotting
+    solutionplot_helmholtz(u_pred, X_u_train, u_train, usol, x_1, x_2)
 
 
 
