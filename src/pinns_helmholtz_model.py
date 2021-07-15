@@ -9,7 +9,6 @@ def loss_helmholtz(x, y, x_to_train_f, net):
     :param x: input for boundary condition
     :param y: boundary data
     :param x_to_train_f: input for calculating PDE loss
-    :param nu: comes from the PDE itself
     :param net: network
     :return:  loss
     '''

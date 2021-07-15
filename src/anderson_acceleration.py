@@ -50,6 +50,7 @@ def anderson_qr_fun(X, R, relaxation=1.0, regularization = 0.0):
 def accelerate(optimizer, relaxation: float = 1.0, regularization: float = 0.0, history_depth: int = 15,
                store_each_nth: int = 10, frequency: int = 10):
     # acceleration options
+    optimizer.acc = True
     optimizer.acc_relaxation = relaxation
     optimizer.acc_regularization = regularization
 
@@ -75,6 +76,11 @@ def accelerate(optimizer, relaxation: float = 1.0, regularization: float = 0.0, 
 
 
 # TODO: add acceeleration removal
+def remove_acceleration(optimizer):
+    optimizer.acc = False
+    optimizer.step = optimizer.orig_step
+    return optimizer
+
 
 
 def clear_hist(optimizer):
