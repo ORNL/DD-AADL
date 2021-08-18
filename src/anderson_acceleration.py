@@ -46,9 +46,40 @@ def anderson_qr_fun(X, R, relaxation=1.0, regularization = 0.0):
 
     return extr
 
+def anderson_normal_fun(X, R, relaxation=1.0, regularization = 0.0):
+    # Solve the least square problem with qr factorization
+    # Anderson Acceleration type 2
+    # Tinput both the parameters X and residual R
+    # Return acceleration result
+
+    assert X.ndim==2, "X must be a matrix"
+    assert R.ndim==2, "R must be a matrix"
+    assert regularization >= 0.0, "regularization for least-squares must be >=0.0"
+
+    # Compute residuals
+    DX =  X[:,1:] -  X[:,:-1] # DX[:,i] =  X[:,i+1] -  X[:,i]
+    DR =  R[:,1:] -  R[:,:-1] # DR[:,i] =  R[:,i+1] -  R[:,i]
+
+    if regularization == 0.0:
+       RR = DR.t()@DR + regularization * torch.eye(DR.size(1))
+    else:
+       RR = DR.t()@DR
+
+    projected_residual = DR.t() @ R[:, -1].unsqueeze(1)
+    gamma, _ = torch.solve(projected_residual, RR)
+    gamma = gamma.squeeze(1)[:DR.size(1)]
+
+    # compute acceleration
+    extr = X[:,-1] - torch.matmul(DX, gamma)
+
+    if relaxation!=1:
+        assert relaxation>0, "relaxation must be positive"
+        extr = (1-relaxation)*X[:,-1] + relaxation*extr
+
+    return extr
 
 def accelerate(optimizer, relaxation: float = 1.0, regularization: float = 0.0, history_depth: int = 15,
-               store_each_nth: int = 10, frequency: int = 10):
+               store_each_nth: int = 10, frequency: int = 10, method='qr'):
     # acceleration options
     optimizer.acc = True
     optimizer.acc_relaxation = relaxation
@@ -57,6 +88,7 @@ def accelerate(optimizer, relaxation: float = 1.0, regularization: float = 0.0, 
     optimizer.acc_history_depth = history_depth  # history size
     optimizer.acc_store_each_nth = store_each_nth  # frequency to update history
     optimizer.acc_frequency = frequency  # frequency to accelerate
+    optimizer.acc_method = method
 
     # TODO: add averaging or other methods
 
@@ -114,7 +146,10 @@ def accelerated_step(self, closure):
                 # make matrix of updates from the history list
                 X = torch.stack(list(group_hist), dim=1)
                 R = torch.stack(list(self.res_hist), dim=1)
-                acc_param = anderson_qr_fun(X, R, self.acc_relaxation, self.acc_regularization)
+                if self.acc_method=='normal':
+                    acc_param = anderson_normal_fun(X, R, self.acc_relaxation, self.acc_regularization)
+                else:
+                    acc_param = anderson_qr_fun(X, R, self.acc_relaxation, self.acc_regularization)
 
                 # check performance
                 vector_to_parameters(acc_param, group['params'])
@@ -133,3 +168,6 @@ def accelerated_step(self, closure):
 
             self.res_hist.pop()
             self.res_hist.append(final_res.detach())
+
+
+
