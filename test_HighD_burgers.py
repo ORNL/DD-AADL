@@ -8,9 +8,6 @@ get_ipython().system('unzip /content/DataDrivenAcceleration-XJ.zip -d /content/D
 get_ipython().run_line_magic('cd', '/content/DataDrivenAcceleration-XJ')
 """
 
-# In[39]:
-
-
 import time
 import torch
 import torch.autograd as autograd         # computation graph
@@ -127,12 +124,6 @@ def loss_burgers(x, y, x_to_train_f, d, net):
     return res, loss
 
 
-
-
-# In[42]:
-
-
-
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print('device: ', device)
 
@@ -140,19 +131,19 @@ print('device: ', device)
 niters = 3000
 N_u = 400
 N_f = 4000
-lr = 0.1
+lr = 0.01
 print_freq = 100
 num_repeats = 1
 acceleration_type = 'anderson'
 relaxation=0.5
 history_depth = 10
-store_each_nth=10
-frequency=10
+store_each_nth=1
+frequency=1
 average = False
 
 d = 100
 # net = Phi(nTh=4,d=d,m=32)
-layers = np.array([d, 50, 1])
+layers = np.array([d, 50, 50, 50, 1])
 net = MLP(layers)
 net.to(device)
 
@@ -168,12 +159,6 @@ x_to_train_f = 0.5 * torch.rand(N_f, d).to(device)
 x_val = 0.5 * torch.rand(N_u, d).to(device)
 y_val = data_gen(x_val); y_val = y_val.to(device)
 print('initial validation error: ', torch.mean(torch.abs(y_val - net(x_val))))
-
-
-# ## Averaging
-
-# In[54]:
-
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print('device: ', device)
@@ -219,10 +204,12 @@ for repeat in range(num_repeats):
             x_to_train_f = torch.cat((0.5*torch.randn(N_f, d-1), torch.rand(N_f, 1)), dim=1).to(device)   
             # clear_hist(optim)
 
+        """
         # change learning rate
-        if itr % 500 == 0:
+        if itr % 1000 == 0:
             for p in optim.param_groups:
                 p['lr'] *= 0.5
+        """
 
     # Validation
     err = torch.mean(torch.abs(y_val - net(x_val)))
@@ -233,13 +220,7 @@ print('average validation error: ', err_average/1)
 elapsed = time.time() - start_time
 print('Training time: %.2f' % (elapsed))
 
-
-# In[44]:
-
-
 record_default = record
-
-# In[59]:
 
 err_average = 0.
 record = np.zeros([niters+1, num_repeats])
@@ -279,10 +260,12 @@ for repeat in range(num_repeats):
             x_to_train_f = torch.cat((0.5*torch.randn(N_f, d-1), torch.rand(N_f, 1)), dim=1).to(device)   
             # clear_hist(optim)
 
+        """
         # change learning rate
-        if itr % 500 == 0:
+        if itr % 1000 == 0:
             for p in optim.param_groups:
                 p['lr'] *= 0.5
+        """
 
     # Validation
     err = torch.mean(torch.abs(y_val - net(x_val)))
@@ -293,16 +276,7 @@ print('average validation error: ', err_average/1)
 elapsed = time.time() - start_time
 print('Training time: %.2f' % (elapsed))
 
-
-# In[46]:
-
-
 record_AADL = record
-
-average = True
-
-# In[50]:
-
 
 err_average = 0.
 record = np.zeros([niters+1, num_repeats])
@@ -318,8 +292,7 @@ for repeat in range(num_repeats):
     net = MLP(layers)
     net.to(device)
     optim = torch.optim.Adam(net.parameters(), lr=lr)
-    # accelerate(optim, frequency = 20)
-    AADL.accelerate(optim, acceleration_type = acceleration_type, relaxation=relaxation, history_depth = history_depth, store_each_nth=store_each_nth, frequency=frequency, average = average)
+    accelerate(optim, frequency = 20)
     record[0,repeat] = loss_burgers(x, y, x_to_train_f, d, net)[1].detach()
 
     for itr in range(1, niters + 1):
@@ -327,7 +300,7 @@ for repeat in range(num_repeats):
             optim.zero_grad()
             res, loss = loss_burgers(x, y, x_to_train_f, d, net)
             loss.backward()
-            return loss
+            return res, loss
         optim.step(closure)
         loss = loss_burgers(x, y, x_to_train_f, d, net)[1]
         record[itr, repeat] = loss.detach()
@@ -342,10 +315,12 @@ for repeat in range(num_repeats):
             x_to_train_f = torch.cat((0.5*torch.randn(N_f, d-1), torch.rand(N_f, 1)), dim=1).to(device)   
             clear_hist(optim)
 
+        """
         # change learning rate
-        if itr % 500 == 0:
+        if itr % 1000 == 0:
             for p in optim.param_groups:
                 p['lr'] *= 0.5
+        """
 
     # Validation
     err = torch.mean(torch.abs(y_val - net(x_val)))
@@ -356,15 +331,7 @@ print('average validation error: ', err_average/1)
 elapsed = time.time() - start_time
 print('Training time: %.2f' % (elapsed))
 
-
-# In[25]:
-
-
-record_AADL_average = record
-
-
-# In[28]:
-
+record_DDAADL = record
 
 import math
 import matplotlib.pyplot as plt
@@ -382,24 +349,18 @@ AADL_std = np.std(record_AADL,axis=1)
 plt.plot(range(niters+1),AADL_avg, color='g', linewidth=2)
 plt.fill_between(range(niters+1), AADL_avg-AADL_std*2/math.sqrt(num_repeats),AADL_avg+AADL_std*2/math.sqrt(num_repeats),color='g',alpha=.2)
 
-AADL_avg_average = np.mean(record_AADL_average,axis=1)
-AADL_std_average = np.std(record_AADL_average,axis=1)
-plt.plot(range(niters+1),AADL_avg_average, color='r', linewidth=2)
-plt.fill_between(range(niters+1), AADL_avg_average-AADL_std_average*2/math.sqrt(num_repeats),AADL_avg_average+AADL_std_average*2/math.sqrt(num_repeats),color='r',alpha=.2)
+DDAADL_avg = np.mean(record_DDAADL,axis=1)
+DDAADL_std = np.std(record_DDAADL,axis=1)
+plt.plot(range(niters+1),DDAADL_avg, color='r', linewidth=2)
+plt.fill_between(range(niters+1), DDAADL_avg-DDAADL_std*2/math.sqrt(num_repeats),DDAADL_avg+DDAADL_std*2/math.sqrt(num_repeats),color='r',alpha=.2)
 
 
 plt.yscale('log')
-plt.ylim([1.e-5, 3.e2])
-plt.legend(['default', 'data driven Anderson acceleration', 'AADL'])
-plt.xlabel('number of iteration')
-plt.ylabel('loss function value')
-plt.title('100D Burgers equation')
-fig.savefig('file.jpg', dpi=500)
+plt.ylim([1.e-6, 1.e2])
+plt.legend(['Adam', 'Adam + AADL + Average', 'Adam + Data Driven AADL'])
+plt.xlabel('Number of iterations')
+plt.ylabel('Validation Mean Squared Error')
+plt.title('100D Burgers\' Equation')
+fig.savefig('HighDBurgers_solution.jpg', dpi=500)
 
-
-# In[ ]:
-
-
-from google.colab import files
-files.download('file.jpg') 
 
