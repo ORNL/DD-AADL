@@ -1,13 +1,3 @@
-#!/usr/bin/env python
-# coding: utf-8
-
-# In[14]:
-
-"""
-get_ipython().system('unzip /content/DataDrivenAcceleration-XJ.zip -d /content/DataDrivenAcceleration-XJ')
-get_ipython().run_line_magic('cd', '/content/DataDrivenAcceleration-XJ')
-"""
-
 import time
 import torch
 import torch.autograd as autograd  # computation graph
@@ -16,7 +6,6 @@ import torch.nn as nn
 from src.NN_models import *
 from src.anderson_acceleration import *
 
-# from src.Phi import *
 from src.utils import count_parameters
 
 import AADL as AADL
@@ -64,10 +53,6 @@ def forcing(x):
         f = f - uxx_i
 
     return f
-
-
-# In[41]:
-
 
 # define a test problem
 def loss_burgers(x, y, x_to_train_f, d, net):
@@ -148,13 +133,11 @@ frequency = 1
 average = False
 
 d = 100
-# net = Phi(nTh=4,d=d,m=32)
 layers = np.array([d, 50, 50, 50, 1])
 net = MLP(layers)
 net.to(device)
 
 optim = torch.optim.Adam(params=net.parameters(), lr=lr)
-# accelerate(optim, frequency = 10)
 
 # data
 x = 0.5 * torch.rand(N_u, d).to(device)
@@ -194,8 +177,6 @@ for repeat in range(num_repeats):
     net = MLP(layers)
     net.to(device)
     optim = torch.optim.Adam(net.parameters(), lr=lr)
-    # accelerate(optim, frequency = 20)
-    # AADL.accelerate(optim, relaxation=1.0, store_each_nth=10, frequency=20)
     record[0, repeat] = loss_burgers(x, y, x_to_train_f, d, net)[1].detach()
 
     for itr in range(1, niters + 1):
@@ -263,7 +244,6 @@ for repeat in range(num_repeats):
     net = MLP(layers)
     net.to(device)
     optim = torch.optim.Adam(net.parameters(), lr=lr)
-    # accelerate(optim, frequency = 20)
     AADL.accelerate(
         optim,
         acceleration_type=acceleration_type,
