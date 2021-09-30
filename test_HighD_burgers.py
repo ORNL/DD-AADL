@@ -179,13 +179,7 @@ for repeat in range(num_repeats):
 
     for itr in range(1, niters + 1):
 
-        def closure():
-            optim.zero_grad()
-            res, loss = loss_burgers(x, y, x_to_train_f, d, net)
-            loss.backward()
-            return loss
-
-        optim.step(closure)
+        optim.step()
         loss = loss_burgers(x, y, x_to_train_f, d, net)[1]
         record[itr, repeat] = loss.detach()
 
@@ -257,7 +251,7 @@ for repeat in range(num_repeats):
 
         def closure():
             optim.zero_grad()
-            res, loss = loss_burgers(x, y, x_to_train_f, d, net)
+            loss, res = loss_burgers(x, y, x_to_train_f, d, net)
             loss.backward()
             return loss
 
@@ -325,9 +319,9 @@ for repeat in range(num_repeats):
 
         def closure():
             optim.zero_grad()
-            res, loss = loss_burgers(x, y, x_to_train_f, d, net)
+            loss, res = loss_burgers(x, y, x_to_train_f, d, net)
             loss.backward()
-            return res, loss
+            return loss, res
 
         optim.step(closure)
         loss = loss_burgers(x, y, x_to_train_f, d, net)[1]
