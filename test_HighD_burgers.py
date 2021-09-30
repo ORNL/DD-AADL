@@ -22,8 +22,6 @@ import AADL as AADL
 #
 # $$ u = e^{-t} (x_1 -1)(x_1 +1) \dots (x_n -1)(x_n + 1)$$
 
-# In[40]:
-
 
 def data_gen(x):
     # solution to burgers equation
