@@ -408,7 +408,7 @@ plt.fill_between(
 
 plt.yscale("log")
 plt.ylim([1.0e-8, 1.0e2])
-plt.legend(["Adam", "Adam + AADL + Average", "Adam + Data Driven AADL"])
+plt.legend(["Adam", "Adam + AADL", "Adam + Data Driven AADL"])
 plt.xlabel("Number of iterations")
 plt.ylabel("Validation Mean Squared Error")
 plt.title("100D Burgers' Equation")
