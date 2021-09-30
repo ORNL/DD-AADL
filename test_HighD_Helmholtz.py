@@ -1,6 +1,3 @@
-!unzip /content/DataDrivenAcceleration-XJ.zip -d /content/DataDrivenAcceleration-XJ
-%cd /content/DataDrivenAcceleration-XJ
-
 import time
 import torch
 import torch.autograd as autograd         # computation graph
@@ -8,8 +5,9 @@ import torch.nn as nn
 
 from src.NN_models import *
 from src.anderson_acceleration import *
-from src.Phi import *
 from src.utils import count_parameters
+
+import copy
 
 import AADL as AADL
 
@@ -90,52 +88,6 @@ def loss_helmholtz(x, y, x_to_train_f, d, net):
     return res, loss
 
 
-
-
-
-class ResNN_fun(nn.Module):
-    def __init__(self, d, m, nTh=2):
-        """
-            ResNet N portion of Phi
-        :param d:   int, dimension of space input
-        :param m:   int, hidden dimension
-        :param nTh: int, number of resNet layers , (number of theta layers)
-        """
-        super().__init__()
-
-        if nTh < 2:
-            print("nTh must be an integer >= 2")
-            exit(1)
-
-        self.d = d
-        self.m = m
-        self.nTh = nTh
-        self.layers = nn.ModuleList([])
-        self.layers.append(nn.Linear(d, m, bias=True)) # opening layer
-        self.layers.append(nn.Linear(m,m, bias=True)) # resnet layers
-        for i in range(nTh-2):
-            self.layers.append(copy.deepcopy(self.layers[1]))
-        self.layers.append(nn.Linear(m,1, bias=True))
-        self.act = antiderivTanh
-        self.h = 1.0 / (self.nTh-1) # step size for the ResNet
-
-    def forward(self, x):
-        """
-            N(s;theta). the forward propogation of the ResNet
-        :param x: tensor nex-by-d, inputs
-        :return:  tensor nex-by-m,   outputs
-        """
-
-        x = self.act(self.layers[0].forward(x))
-
-        for i in range(1,self.nTh):
-            x = x + self.h * self.act(self.layers[i](x))
-
-        x = self.layers[-1](x)
-
-        return x
-
-
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print('device: ', device)
 
@@ -148,97 +100,277 @@ print_freq = 100
 
 
 d = 10
+layers = np.array([d, 50, 50, 50, 1])
 
 start_time = time.time() 
 print((2 * "%7s    ") % ("step", "Loss"))
 err_average = 0.
 
-record = np.zeros([niters+1, 5])
-for repeat in range(5):
-    x = torch.rand(N_u,d).to(device)
-    y = data_gen(x); y = y.to(device)
-    x_to_train_f = torch.rand(N_f,d).to(device)
+# parameter list
+niters = 3000
+N_u = 400
+N_f = 4000
+lr = 0.01
+print_freq = 100
+num_repeats = 1
+acceleration_type = "anderson"
+relaxation = 0.5
+history_depth = 10
+store_each_nth = 1
+frequency = 1
+average = False
 
-    x_val = torch.rand(2048,d).to(device)
-    y_val = data_gen(x_val); y_Val = y_val.to(device)
 
-    # layers = np.array([d, 20, 40, 40, 20, 1])
-    # net = MLP(layers)
-    net = ResNN_fun(d=d, m=32, nTh=4)
+record = np.zeros([niters + 1, num_repeats])
+for repeat in range(num_repeats):
+    torch.manual_seed(repeat)
+    x = torch.cat((0.5 * torch.randn(N_u, d - 1), torch.rand(N_u, 1)), dim=1).to(device)
+    y = data_gen(x)
+    y = y.to(device)
+    x_to_train_f = torch.cat(
+        (0.5 * torch.randn(N_f, d - 1), torch.rand(N_f, 1)), dim=1
+    ).to(device)
+
+    x_val = torch.cat((0.5 * torch.randn(500, d - 1), torch.rand(500, 1)), dim=1).to(
+        device
+    )
+    y_val = data_gen(x_val)
+    y_Val = y_val.to(device)
+
+    net = MLP(layers)
     net.to(device)
     optim = torch.optim.Adam(net.parameters(), lr=lr)
-    # accelerate(optim, frequency = 10)
-    # AADL.accelerate(optim, relaxation=1.0, store_each_nth=10, frequency=10)
-    record[0,repeat] = loss_helmholtz(x, y, x_to_train_f, d, net)[1].detach()
-    print('Initial validation results, error in absolute value: ', torch.mean(torch.abs(y_val - net(x_val))))
+    record[0, repeat] = loss_helmholtz(x, y, x_to_train_f, d, net)[1].detach()
 
     for itr in range(1, niters + 1):
+
+        optim.zero_grad()
+        loss = loss_helmholtz(x, y, x_to_train_f, d, net)[1]
+        loss.backward()
+        optim.step()
+        record[itr, repeat] = loss.detach()
+
+        if itr % print_freq == 0:
+            print(("%06d    " + "%1.4e    ") % (itr, loss))
+
+        # resample
+        if itr % 500 == 0:
+            x = torch.cat(
+                (0.5 * torch.randn(N_u, d - 1), torch.rand(N_u, 1)), dim=1
+            ).to(device)
+            y = data_gen(x)
+            y = y.to(device)
+            x_to_train_f = torch.cat(
+                (0.5 * torch.randn(N_f, d - 1), torch.rand(N_f, 1)), dim=1
+            ).to(device)
+            # clear_hist(optim)
+
+        """
+        # change learning rate
+        if itr % 1000 == 0:
+            for p in optim.param_groups:
+                p['lr'] *= 0.5
+        """
+
+    # Validation
+    err = torch.mean(torch.abs(y_val - net(x_val)))
+    err_average += err
+    print("Validation results, error in absolute value: ", err)
+
+print("average validation error: ", err_average / 1)
+elapsed = time.time() - start_time
+print("Training time: %.2f" % (elapsed))
+
+record_default = record
+
+err_average = 0.0
+record = np.zeros([niters + 1, num_repeats])
+for repeat in range(num_repeats):
+    torch.manual_seed(repeat)
+    x = torch.cat((0.5 * torch.randn(N_u, d - 1), torch.rand(N_u, 1)), dim=1).to(device)
+    y = data_gen(x)
+    y = y.to(device)
+    x_to_train_f = torch.cat(
+        (0.5 * torch.randn(N_f, d - 1), torch.rand(N_f, 1)), dim=1
+    ).to(device)
+
+    x_val = torch.cat((0.5 * torch.randn(500, d - 1), torch.rand(500, 1)), dim=1).to(
+        device
+    )
+    y_val = data_gen(x_val)
+    y_Val = y_val.to(device)
+
+    net = MLP(layers)
+    net.to(device)
+    optim = torch.optim.Adam(net.parameters(), lr=lr)
+    AADL.accelerate(
+        optim,
+        acceleration_type=acceleration_type,
+        relaxation=relaxation,
+        history_depth=history_depth,
+        store_each_nth=store_each_nth,
+        frequency=frequency,
+        average=average,
+    )
+    record[0, repeat] = loss_helmholtz(x, y, x_to_train_f, d, net)[1].detach()
+
+    for itr in range(1, niters + 1):
+
         def closure():
             optim.zero_grad()
             res, loss = loss_helmholtz(x, y, x_to_train_f, d, net)
             loss.backward()
-            return res, loss
+            return loss
+
         optim.step(closure)
         loss = loss_helmholtz(x, y, x_to_train_f, d, net)[1]
         record[itr, repeat] = loss.detach()
 
         if itr % print_freq == 0:
-            print(("%06d    " + "%1.4e    ") %(itr, loss))
+            print(("%06d    " + "%1.4e    ") % (itr, loss))
 
         # resample
         if itr % 500 == 0:
-            x = torch.rand(N_u,d).to(device)
-            y = data_gen(x); y = y.to(device)
-            x_to_train_f = torch.rand(N_f,d).to(device)
+            x = torch.cat(
+                (0.5 * torch.randn(N_u, d - 1), torch.rand(N_u, 1)), dim=1
+            ).to(device)
+            y = data_gen(x)
+            y = y.to(device)
+            x_to_train_f = torch.cat(
+                (0.5 * torch.randn(N_f, d - 1), torch.rand(N_f, 1)), dim=1
+            ).to(device)
             # clear_hist(optim)
 
+        """
         # change learning rate
         if itr % 1000 == 0:
             for p in optim.param_groups:
-                p['lr'] *= 0.2
+                p['lr'] *= 0.5
+        """
 
     # Validation
     err = torch.mean(torch.abs(y_val - net(x_val)))
     err_average += err
-    print('Validation results, error in absolute value: ', err)
+    print("Validation results, error in absolute value: ", err)
 
-print('average validation error: ', err_average/5)
+print("average validation error: ", err_average / 1)
 elapsed = time.time() - start_time
-print('Training time: %.2f' % (elapsed))
-
-record0 = record
-
-record_accelerated = record
+print("Training time: %.2f" % (elapsed))
 
 record_AADL = record
 
+err_average = 0.0
+record = np.zeros([niters + 1, num_repeats])
+for repeat in range(num_repeats):
+    torch.manual_seed(repeat)
+    x = torch.cat((0.5 * torch.randn(N_u, d - 1), torch.rand(N_u, 1)), dim=1).to(device)
+    y = data_gen(x)
+    y = y.to(device)
+    x_to_train_f = torch.cat(
+        (0.5 * torch.randn(N_f, d - 1), torch.rand(N_f, 1)), dim=1
+    ).to(device)
+
+    x_val = torch.cat((0.5 * torch.randn(500, d - 1), torch.rand(500, 1)), dim=1).to(
+        device
+    )
+    y_val = data_gen(x_val)
+    y_Val = y_val.to(device)
+
+    net = MLP(layers)
+    net.to(device)
+    optim = torch.optim.Adam(net.parameters(), lr=lr)
+    accelerate(optim, frequency=20)
+    record[0, repeat] = loss_helmholtz(x, y, x_to_train_f, d, net)[1].detach()
+
+    for itr in range(1, niters + 1):
+
+        def closure():
+            optim.zero_grad()
+            res, loss = loss_helmholtz(x, y, x_to_train_f, d, net)
+            loss.backward()
+            return res, loss
+
+        optim.step(closure)
+        loss = loss_helmholtz(x, y, x_to_train_f, d, net)[1]
+        record[itr, repeat] = loss.detach()
+
+        if itr % print_freq == 0:
+            print(("%06d    " + "%1.4e    ") % (itr, loss))
+
+        # resample
+        if itr % 500 == 0:
+            x = torch.cat(
+                (0.5 * torch.randn(N_u, d - 1), torch.rand(N_u, 1)), dim=1
+            ).to(device)
+            y = data_gen(x)
+            y = y.to(device)
+            x_to_train_f = torch.cat(
+                (0.5 * torch.randn(N_f, d - 1), torch.rand(N_f, 1)), dim=1
+            ).to(device)
+            clear_hist(optim)
+
+        """
+        # change learning rate
+        if itr % 1000 == 0:
+            for p in optim.param_groups:
+                p['lr'] *= 0.5
+        """
+
+    # Validation
+    err = torch.mean(torch.abs(y_val - net(x_val)))
+    err_average += err
+    print("Validation results, error in absolute value: ", err)
+
+print("average validation error: ", err_average / 1)
+elapsed = time.time() - start_time
+print("Training time: %.2f" % (elapsed))
+
+record_DDAADL = record
+
+import math
 import matplotlib.pyplot as plt
 
-anderson_avg = np.mean(record_accelerated,axis=1)
-anderson_std = np.std(record_accelerated,axis=1)
-avg = np.mean(record0,axis=1)
-std = np.std(record0,axis=1)
+avg = np.mean(record_default, axis=1)
+std = np.std(record_default, axis=1)
 
 fig = plt.figure()
-plt.plot(range(niters+1),avg, color='b', linewidth=2)
-plt.fill_between(range(niters+1), avg-std,avg+std,color='b',alpha=.2)
-plt.plot(range(niters+1),anderson_avg, color='r', linewidth=2)
-plt.fill_between(range(niters+1), anderson_avg-anderson_std,anderson_avg+anderson_std,color='r',alpha=.2)
+plt.plot(range(niters + 1), avg, color="b", linewidth=2)
+plt.fill_between(
+    range(niters + 1),
+    avg - std * 2 / math.sqrt(num_repeats),
+    avg + std * 2 / math.sqrt(num_repeats),
+    color="b",
+    alpha=0.2,
+)
 
 
-AADL_avg = np.mean(record_AADL,axis=1)
-AADL_std = np.std(record_AADL,axis=1)
-plt.plot(range(niters+1),AADL_avg, color='g', linewidth=2)
-plt.fill_between(range(niters+1), AADL_avg-AADL_std,AADL_avg+AADL_std,color='g',alpha=.2)
+AADL_avg = np.mean(record_AADL, axis=1)
+AADL_std = np.std(record_AADL, axis=1)
+plt.plot(range(niters + 1), AADL_avg, color="g", linewidth=2)
+plt.fill_between(
+    range(niters + 1),
+    AADL_avg - AADL_std * 2 / math.sqrt(num_repeats),
+    AADL_avg + AADL_std * 2 / math.sqrt(num_repeats),
+    color="g",
+    alpha=0.2,
+)
+
+DDAADL_avg = np.mean(record_DDAADL, axis=1)
+DDAADL_std = np.std(record_DDAADL, axis=1)
+plt.plot(range(niters + 1), DDAADL_avg, color="r", linewidth=2)
+plt.fill_between(
+    range(niters + 1),
+    DDAADL_avg - DDAADL_std * 2 / math.sqrt(num_repeats),
+    DDAADL_avg + DDAADL_std * 2 / math.sqrt(num_repeats),
+    color="r",
+    alpha=0.2,
+)
 
 
-plt.yscale('log')
-plt.ylim([1.e-1, 2.e2])
-plt.legend(['default', 'data driven Anderson acceleration', 'AADL'])
-plt.xlabel('number of iteration')
-plt.ylabel('loss function value')
-plt.title('10D Helmholtz equation')
-fig.savefig('file.jpg', dpi=500)
-
-from google.colab import files
-files.download('file.jpg') 
+plt.yscale("log")
+plt.ylim([1.0e-8, 1.0e2])
+plt.legend(["Adam", "Adam + AADL", "Adam + Data Driven AADL"])
+plt.xlabel("Number of iterations")
+plt.ylabel("Validation Mean Squared Error")
+plt.title(f"{d}d Helmoltz' Equation")
+fig.savefig("HighDBurgers_solution.jpg", dpi=500)

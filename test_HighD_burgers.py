@@ -10,7 +10,6 @@ from src.utils import count_parameters
 
 import AADL as AADL
 
-
 # ## Problem Setup
 #
 # Consider Burgers Equation
@@ -132,10 +131,6 @@ average = False
 
 d = 100
 layers = np.array([d, 50, 50, 50, 1])
-net = MLP(layers)
-net.to(device)
-
-optim = torch.optim.Adam(params=net.parameters(), lr=lr)
 
 # data
 x = 0.5 * torch.rand(N_u, d).to(device)
@@ -179,8 +174,10 @@ for repeat in range(num_repeats):
 
     for itr in range(1, niters + 1):
 
-        optim.step()
+        optim.zero_grad()
         loss = loss_burgers(x, y, x_to_train_f, d, net)[1]
+        loss.backward()
+        optim.step()
         record[itr, repeat] = loss.detach()
 
         if itr % print_freq == 0:
@@ -251,7 +248,7 @@ for repeat in range(num_repeats):
 
         def closure():
             optim.zero_grad()
-            loss, res = loss_burgers(x, y, x_to_train_f, d, net)
+            res, loss = loss_burgers(x, y, x_to_train_f, d, net)
             loss.backward()
             return loss
 
@@ -319,9 +316,9 @@ for repeat in range(num_repeats):
 
         def closure():
             optim.zero_grad()
-            loss, res = loss_burgers(x, y, x_to_train_f, d, net)
+            res, loss = loss_burgers(x, y, x_to_train_f, d, net)
             loss.backward()
-            return loss, res
+            return res, loss
 
         optim.step(closure)
         loss = loss_burgers(x, y, x_to_train_f, d, net)[1]
@@ -405,5 +402,5 @@ plt.ylim([1.0e-8, 1.0e2])
 plt.legend(["Adam", "Adam + AADL", "Adam + Data Driven AADL"])
 plt.xlabel("Number of iterations")
 plt.ylabel("Validation Mean Squared Error")
-plt.title("100d Burgers' Equation")
+plt.title(f"{d}d Burgers' Equation")
 fig.savefig("HighDBurgers_solution.jpg", dpi=500)
