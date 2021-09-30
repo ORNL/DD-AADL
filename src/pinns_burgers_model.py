@@ -3,8 +3,9 @@ import torch
 import torch.autograd as autograd
 from src.NN_models import *
 
-def loss_burgers(x, y, x_to_train_f, net, nu = 0.01/pi):
-    '''
+
+def loss_burgers(x, y, x_to_train_f, net, nu=0.01 / pi):
+    """
 
     :param x: input for boundary condition
     :param y: boundary data
@@ -12,8 +13,7 @@ def loss_burgers(x, y, x_to_train_f, net, nu = 0.01/pi):
     :param nu: comes from the PDE itself
     :param net: network
     :return:  loss
-    '''
-
+    """
 
     loss_fun = nn.MSELoss()
     loss_BC = loss_fun(net.forward(x), y)
@@ -23,10 +23,14 @@ def loss_burgers(x, y, x_to_train_f, net, nu = 0.01/pi):
 
     u = net.forward(g)
     # gradient
-    u_x_t = autograd.grad(u, g, torch.ones_like(u).to(g.device), retain_graph=True, create_graph=True)[0]  # TODO: check device
+    u_x_t = autograd.grad(
+        u, g, torch.ones_like(u).to(g.device), retain_graph=True, create_graph=True
+    )[
+        0
+    ]  # TODO: check device
     # Hessian
     num = x_to_train_f.shape[0]
-    vec = torch.cat([torch.ones(num,1),torch.zeros(num,1)], dim=1).to(g.device)
+    vec = torch.cat([torch.ones(num, 1), torch.zeros(num, 1)], dim=1).to(g.device)
     u_xx_tt = autograd.grad(u_x_t, g, vec, create_graph=True)[0]
 
     u_x = u_x_t[:, [0]]
@@ -40,8 +44,8 @@ def loss_burgers(x, y, x_to_train_f, net, nu = 0.01/pi):
 
     # calculate residual
     res_PDE = f
-    res_BC  = net.forward(x) - y
-    res = torch.cat((res_PDE,res_BC), dim=0)
+    res_BC = net.forward(x) - y
+    res = torch.cat((res_PDE, res_BC), dim=0)
     res = torch.flatten(res)
 
     return loss, res
@@ -50,12 +54,12 @@ def loss_burgers(x, y, x_to_train_f, net, nu = 0.01/pi):
 if __name__ == "__main__":
 
     # testing
-    x = torch.tensor([1., 2.]); x = x.view(1, -1)
+    x = torch.tensor([1.0, 2.0])
+    x = x.view(1, -1)
     y = torch.tensor([[10.0]])
-    x_to_train_f = torch.rand(10,2)
+    x_to_train_f = torch.rand(10, 2)
 
     layers = np.array([2, 50, 50, 1])
     net = MLP(layers)
 
-    print('loss = ', loss_burgers(x, y, x_to_train_f, net, nu = 0.01/pi)[0])
-
+    print("loss = ", loss_burgers(x, y, x_to_train_f, net, nu=0.01 / pi)[0])
