@@ -17,7 +17,7 @@ def data_gen(x):
     xx1 = torch.sin(x)
     xx2 = torch.sin(2*x)
     xx3 = torch.sin(3*x)
-    sol = torch.prod(xx1, dim=1).view(-1,1) + torch.prod(xx3, dim=1).view(-1,1) + torch.prod(xx3, dim=1).view(-1,1)
+    sol = torch.prod(xx1, dim=1).view(-1,1) + torch.prod(xx2, dim=1).view(-1,1) + torch.prod(xx3, dim=1).view(-1,1)
 
     return sol
 
@@ -28,7 +28,8 @@ def forcing(x):
 
 
     # laplacian 
-    lap = d * torch.prod(torch.sin(x), dim=1).view(-1,1) + 4*d*torch.prod(torch.sin(2*x), dim=1).view(-1,1) + 9*d*torch.prod(torch.sin(3*x), dim=1).view(-1,1)
+    lap = -torch.prod(torch.sin(x), dim=1).view(-1,1) - 4*torch.prod(torch.sin(2*x), dim=1).view(-1,1) - 9*torch.prod(torch.sin(3*x), dim=1).view(-1,1)
+    lap = 3 * lap
 
     f = -lap + u**3
 
@@ -61,7 +62,7 @@ def loss_helmholtz(x, y, x_to_train_f, d, net):
     # laplacian? depending on the problem
     num = x_to_train_f.shape[0]
     lap = torch.zeros(num,1).to(g.device)
-    for i in range(d-1):
+    for i in range(d):
         vec = torch.zeros_like(u_x)
         vec[:,i] = torch.ones(num)
         u_xx_i = autograd.grad(u_x, g, vec, create_graph=True)[0]
