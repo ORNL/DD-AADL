@@ -11,27 +11,38 @@ import copy
 
 import AADL as AADL
 
+# ## Problem Setup
+#
+# Consider Helmolts Equation
+#
+# $$ u^2 - \Delta u = f         $$
+#
+#
+# Suppose we define $u$ as a function  composite of polynomials and expenential fucntions, i.e.
+#
+# $$ u = (x_1 -1)(x_1 +1) \dots (x_n -1)(x_n + 1)$$
+
+
 def data_gen(x):
     # solution to burgers equation
     d = x.shape[1]
-    xx1 = torch.sin(x)
-    xx2 = torch.sin(2*x)
-    xx3 = torch.sin(3*x)
-    sol = torch.prod(xx1, dim=1).view(-1,1) + torch.prod(xx2, dim=1).view(-1,1) + torch.prod(xx3, dim=1).view(-1,1)
+    xx = x[:, : d]
+    xx = (xx - 1) * (xx + 1)
+    sol = torch.prod(xx, dim=1).view(-1, 1)
 
     return sol
+
 
 def forcing(x):
     # forcing term for the burgers equation
     d = x.shape[1]
     u = data_gen(x)
+    f = u**2
 
-
-    # laplacian 
-    lap = -torch.prod(torch.sin(x), dim=1).view(-1,1) - 4*torch.prod(torch.sin(2*x), dim=1).view(-1,1) - 9*torch.prod(torch.sin(3*x), dim=1).view(-1,1)
-    lap = 3 * lap
-
-    f = -lap + u**3
+    # laplacian
+    for i in range(d):
+        uxx_i = 2 * u / ((x[:, i] - 1) * (x[:, i] + 1)).view(-1, 1)
+        f = f - uxx_i
 
     return f
 
@@ -70,7 +81,7 @@ def loss_helmholtz(x, y, x_to_train_f, d, net):
 
         lap = lap + u_xxi
 
-    f = -lap + u**3
+    f = -lap + u**2
 
     ## forcing term
     ff = forcing(g)
@@ -100,8 +111,8 @@ lr = 0.01
 print_freq = 100
 
 
-d = 10
-layers = np.array([d, 50, 50, 50, 1])
+d = 100
+layers = np.array([d, 50, 50, 50, 50, 50, 1])
 
 start_time = time.time() 
 print((2 * "%7s    ") % ("step", "Loss"))
@@ -118,8 +129,9 @@ acceleration_type = "anderson"
 relaxation = 0.5
 history_depth = 10
 store_each_nth = 1
-frequency = 1
-average = False
+frequency = 5
+resample = 500
+average = True
 
 
 record = np.zeros([niters + 1, num_repeats])
@@ -155,7 +167,7 @@ for repeat in range(num_repeats):
             print(("%06d    " + "%1.4e    ") % (itr, loss))
 
         # resample
-        if itr % 500 == 0:
+        if itr % resample == 0:
             x = torch.cat(
                 (0.5 * torch.randn(N_u, d - 1), torch.rand(N_u, 1)), dim=1
             ).to(device)
@@ -231,7 +243,7 @@ for repeat in range(num_repeats):
             print(("%06d    " + "%1.4e    ") % (itr, loss))
 
         # resample
-        if itr % 500 == 0:
+        if itr % resample == 0:
             x = torch.cat(
                 (0.5 * torch.randn(N_u, d - 1), torch.rand(N_u, 1)), dim=1
             ).to(device)
@@ -280,7 +292,7 @@ for repeat in range(num_repeats):
     net = MLP(layers)
     net.to(device)
     optim = torch.optim.Adam(net.parameters(), lr=lr)
-    accelerate(optim, frequency=20)
+    accelerate(optim, relaxation=1.0, store_each_nth=store_each_nth, history_depth=history_depth, frequency=1)
     record[0, repeat] = loss_helmholtz(x, y, x_to_train_f, d, net)[1].detach()
 
     for itr in range(1, niters + 1):
@@ -299,7 +311,7 @@ for repeat in range(num_repeats):
             print(("%06d    " + "%1.4e    ") % (itr, loss))
 
         # resample
-        if itr % 500 == 0:
+        if itr % resample == 0:
             x = torch.cat(
                 (0.5 * torch.randn(N_u, d - 1), torch.rand(N_u, 1)), dim=1
             ).to(device)
