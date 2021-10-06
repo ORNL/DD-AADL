@@ -103,16 +103,8 @@ def loss_helmholtz(x, y, x_to_train_f, d, net):
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print('device: ', device)
 
-# parameter list
-N_u = 400
-N_f = 4000
-niters = 3000
-lr = 0.01
-print_freq = 100
-
-
 d = 100
-layers = np.array([d, 50, 50, 50, 50, 50, 1])
+layers = np.array([d, 50, 50, 50, 1])
 
 start_time = time.time() 
 print((2 * "%7s    ") % ("step", "Loss"))
