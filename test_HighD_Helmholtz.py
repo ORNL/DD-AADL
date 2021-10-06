@@ -137,16 +137,14 @@ average = True
 record = np.zeros([niters + 1, num_repeats])
 for repeat in range(num_repeats):
     torch.manual_seed(repeat)
-    x = torch.cat((0.5 * torch.randn(N_u, d - 1), torch.rand(N_u, 1)), dim=1).to(device)
+    x = torch.cat(((2 * torch.rand(N_u, d - 1))-1, torch.rand(N_u, 1)), dim=1).to(device)
     y = data_gen(x)
     y = y.to(device)
     x_to_train_f = torch.cat(
-        (0.5 * torch.randn(N_f, d - 1), torch.rand(N_f, 1)), dim=1
+        ((2 * torch.rand(N_f, d - 1))-1, torch.rand(N_f, 1)), dim=1
     ).to(device)
 
-    x_val = torch.cat((0.5 * torch.randn(500, d - 1), torch.rand(500, 1)), dim=1).to(
-        device
-    )
+    x_val = torch.cat(((2 * torch.rand(500, d - 1))-1, torch.rand(500, 1)), dim=1).to(device)
     y_val = data_gen(x_val)
     y_Val = y_val.to(device)
 
@@ -168,13 +166,11 @@ for repeat in range(num_repeats):
 
         # resample
         if itr % resample == 0:
-            x = torch.cat(
-                (0.5 * torch.randn(N_u, d - 1), torch.rand(N_u, 1)), dim=1
-            ).to(device)
+            x = torch.cat(((2 * torch.rand(N_u, d - 1))-1, torch.rand(N_u, 1)), dim=1).to(device)
             y = data_gen(x)
             y = y.to(device)
             x_to_train_f = torch.cat(
-                (0.5 * torch.randn(N_f, d - 1), torch.rand(N_f, 1)), dim=1
+                ((2 * torch.rand(N_f, d - 1)) - 1, torch.rand(N_f, 1)), dim=1
             ).to(device)
             # clear_hist(optim)
 
@@ -200,16 +196,14 @@ err_average = 0.0
 record = np.zeros([niters + 1, num_repeats])
 for repeat in range(num_repeats):
     torch.manual_seed(repeat)
-    x = torch.cat((0.5 * torch.randn(N_u, d - 1), torch.rand(N_u, 1)), dim=1).to(device)
+    x = torch.cat(((2 * torch.rand(N_u, d - 1)) - 1, torch.rand(N_u, 1)), dim=1).to(device)
     y = data_gen(x)
     y = y.to(device)
     x_to_train_f = torch.cat(
-        (0.5 * torch.randn(N_f, d - 1), torch.rand(N_f, 1)), dim=1
+        ((2 * torch.rand(N_f, d - 1))-1, torch.rand(N_f, 1)), dim=1
     ).to(device)
 
-    x_val = torch.cat((0.5 * torch.randn(500, d - 1), torch.rand(500, 1)), dim=1).to(
-        device
-    )
+    x_val = torch.cat(((2 * torch.rand(500, d - 1))-1, torch.rand(500, 1)), dim=1).to(device)
     y_val = data_gen(x_val)
     y_Val = y_val.to(device)
 
@@ -245,12 +239,12 @@ for repeat in range(num_repeats):
         # resample
         if itr % resample == 0:
             x = torch.cat(
-                (0.5 * torch.randn(N_u, d - 1), torch.rand(N_u, 1)), dim=1
+                ((2 * torch.rand(N_u, d - 1))-1, torch.rand(N_u, 1)), dim=1
             ).to(device)
             y = data_gen(x)
             y = y.to(device)
             x_to_train_f = torch.cat(
-                (0.5 * torch.randn(N_f, d - 1), torch.rand(N_f, 1)), dim=1
+                ((2 * torch.rand(N_f, d - 1))-1, torch.rand(N_f, 1)), dim=1
             ).to(device)
             # clear_hist(optim)
 
@@ -276,14 +270,14 @@ err_average = 0.0
 record = np.zeros([niters + 1, num_repeats])
 for repeat in range(num_repeats):
     torch.manual_seed(repeat)
-    x = torch.cat((0.5 * torch.randn(N_u, d - 1), torch.rand(N_u, 1)), dim=1).to(device)
+    x = torch.cat(((2 * torch.rand(N_u, d - 1))-1, torch.rand(N_u, 1)), dim=1).to(device)
     y = data_gen(x)
     y = y.to(device)
     x_to_train_f = torch.cat(
-        (0.5 * torch.randn(N_f, d - 1), torch.rand(N_f, 1)), dim=1
+        ((2 * torch.rand(N_f, d - 1))-1, torch.rand(N_f, 1)), dim=1
     ).to(device)
 
-    x_val = torch.cat((0.5 * torch.randn(500, d - 1), torch.rand(500, 1)), dim=1).to(
+    x_val = torch.cat(((2 * torch.randn(500, d - 1))-1, torch.rand(500, 1)), dim=1).to(
         device
     )
     y_val = data_gen(x_val)
@@ -313,12 +307,12 @@ for repeat in range(num_repeats):
         # resample
         if itr % resample == 0:
             x = torch.cat(
-                (0.5 * torch.randn(N_u, d - 1), torch.rand(N_u, 1)), dim=1
+                ((2 * torch.rand(N_u, d - 1))-1, torch.rand(N_u, 1)), dim=1
             ).to(device)
             y = data_gen(x)
             y = y.to(device)
             x_to_train_f = torch.cat(
-                (0.5 * torch.randn(N_f, d - 1), torch.rand(N_f, 1)), dim=1
+                ((2 * torch.rand(N_f, d - 1))-1, torch.rand(N_u, 1)), dim=1
             ).to(device)
             clear_hist(optim)
 
