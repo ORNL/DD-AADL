@@ -277,9 +277,7 @@ for repeat in range(num_repeats):
         ((2 * torch.rand(N_f, d - 1))-1, torch.rand(N_f, 1)), dim=1
     ).to(device)
 
-    x_val = torch.cat(((2 * torch.randn(500, d - 1))-1, torch.rand(500, 1)), dim=1).to(
-        device
-    )
+    x_val = torch.cat(((2 * torch.rand(500, d - 1))-1, torch.rand(500, 1)), dim=1).to(device)
     y_val = data_gen(x_val)
     y_Val = y_val.to(device)
 
