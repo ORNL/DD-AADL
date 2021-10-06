@@ -142,10 +142,6 @@ x_to_train_f = 0.5 * torch.rand(N_f, d).to(device)
 x_val = 0.5 * torch.rand(N_u, d).to(device)
 y_val = data_gen(x_val)
 y_val = y_val.to(device)
-print("initial validation error: ", torch.mean(torch.abs(y_val - net(x_val))))
-
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-print("device: ", device)
 
 start_time = time.time()
 print((2 * "%7s    ") % ("step", "Loss"))
