@@ -3,6 +3,7 @@ import os
 import logging
 import torch
 
+
 def count_parameters(model):
     """
     count the number of parameters in a model
