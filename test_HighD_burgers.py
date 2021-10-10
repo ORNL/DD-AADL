@@ -51,6 +51,24 @@ def forcing(x):
 
     return f
 
+def bound_data(n, d):
+    # n -- number of samples on boundary, may not be precise
+    # d -- dimension of problem, last dim time
+    # consider a boxed region with each axis from 0 to 1, including time
+    n0 = math.floor(n/d/2) # number of samples on each face of boundary
+    x = torch.empty(n,d)
+    for i in range(d-1):
+        x0 = torch.rand(n0,d)
+        x0[:,i] = 0. ; x[i*2*n0:i*2*n0+n0,:] = x0
+        x0[:,i] = 1. ; x[i*2*n0+n0:(i+1)*2*n0,:] = x0
+    # for last dim -- time
+    n1 = n - 2*n0*(d-1)
+    x0 = torch.rand(n1,d)
+    x0[:,-1] = 0. ; x[n-n1:,:] = x0
+
+
+    return x
+
 # define a test problem
 def loss_burgers(x, y, x_to_train_f, d, net):
     """
