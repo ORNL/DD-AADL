@@ -26,8 +26,7 @@ def anderson_qr_fun(X, R, relaxation=1.0, regularization=0.0):
 
     if regularization == 0.0:
         # solve unconstrained least-squares problem
-        gamma, _ = torch.lstsq(R[:, -1].unsqueeze(1), DR)
-        gamma = gamma.squeeze(1)[: DR.size(1)]
+        gamma = torch.linalg.lstsq(DR, R[:, -1].unsqueeze(1)).solution
     else:
         # solve augmented least-squares for Tykhonov regularization
         rhs = R[:, -1].unsqueeze(1)
@@ -35,8 +34,7 @@ def anderson_qr_fun(X, R, relaxation=1.0, regularization=0.0):
         expanded_matrix = torch.cat(
             (DR, torch.sqrt(torch.tensor(regularization)) * torch.eye(DR.size(1)))
         )  # sqrt here?
-        gamma, _ = torch.lstsq(expanded_rhs, expanded_matrix)
-        gamma = gamma.squeeze(1)[: DR.size(1)]
+        gamma = torch.linalg.lstsq(expanded_matrix, expanded_rhs).solution
 
     # compute acceleration
     extr = X[:, -1] - torch.matmul(DX, gamma)
