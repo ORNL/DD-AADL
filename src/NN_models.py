@@ -7,7 +7,7 @@ class MLP(nn.Module):
     def __init__(self, layers):
         super().__init__()
         # input layers as list, array or tensor
-        self.activation = nn.Tanh()  # activation function
+        self.activation = nn.ReLU()  # activation function
         self.net_len = len(layers)
 
         self.linears = nn.ModuleList(
