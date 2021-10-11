@@ -130,6 +130,7 @@ relaxation = 0.5
 history_depth = 10
 store_each_nth = 1
 frequency = 1
+resample = 500
 average = False
 
 start_time = time.time()
