@@ -26,7 +26,7 @@ def anderson_qr_fun(X, R, relaxation=1.0, regularization=0.0):
 
     if regularization == 0.0:
         # solve unconstrained least-squares problem
-        gamma = torch.linalg.lstsq(DR, R[:, -1].unsqueeze(1)).solution
+        gamma = torch.linalg.lstsq(DR, R[:, -1]).solution
     else:
         # solve augmented least-squares for Tykhonov regularization
         rhs = R[:, -1].unsqueeze(1)
