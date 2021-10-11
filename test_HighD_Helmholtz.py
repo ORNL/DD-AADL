@@ -302,7 +302,7 @@ for repeat in range(num_repeats):
             y = data_gen(x)
             y = y.to(device)
             x_to_train_f = torch.cat(
-                ((2 * torch.rand(N_f, d - 1))-1, torch.rand(N_u, 1)), dim=1
+                ((2 * torch.rand(N_f, d - 1))-1, torch.rand(N_f, 1)), dim=1
             ).to(device)
             clear_hist(optim)
 
