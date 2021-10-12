@@ -54,8 +54,9 @@ def bound_data(n, d):
     n0 = math.floor(n/d/2) # number of samples on each face of boundary
     x = torch.empty(n,d)
     for i in range(d):
-        x0 = torch.rand(n0,d)
+        x0 = 2*torch.rand(n0,d)-1.
         x0[:,i] = -1.; x[i*2*n0:i*2*n0+n0,:] = x0
+        x0 = 2 * torch.rand(n0, d) - 1
         x0[:,i] = 1. ; x[i*2*n0+n0:(i+1)*2*n0,:] = x0
 
     if n%d != 0:
@@ -149,7 +150,7 @@ err_average = 0.0
 record = np.zeros([niters + 1, num_repeats])
 for repeat in range(num_repeats):
     torch.manual_seed(repeat)
-    x = ((2 * torch.rand(N_u, d))-1).to(device)
+    x = bound_data(N_u, d).to(device)
     y = data_gen(x)
     y = y.to(device)
     x_to_train_f = torch.cat(
@@ -178,7 +179,7 @@ for repeat in range(num_repeats):
 
         # resample
         if itr % resample == 0:
-            x = torch.cat(((2 * torch.rand(N_u, d - 1))-1, torch.rand(N_u, 1)), dim=1).to(device)
+            x = bound_data(N_u, d).to(device)
             y = data_gen(x)
             y = y.to(device)
             x_to_train_f = torch.cat(
@@ -208,7 +209,7 @@ err_average = 0.0
 record = np.zeros([niters + 1, num_repeats])
 for repeat in range(num_repeats):
     torch.manual_seed(repeat)
-    x = torch.cat(((2 * torch.rand(N_u, d - 1)) - 1, torch.rand(N_u, 1)), dim=1).to(device)
+    x = bound_data(N_u, d).to(device)
     y = data_gen(x)
     y = y.to(device)
     x_to_train_f = torch.cat(
@@ -250,9 +251,7 @@ for repeat in range(num_repeats):
 
         # resample
         if itr % resample == 0:
-            x = torch.cat(
-                ((2 * torch.rand(N_u, d - 1))-1, torch.rand(N_u, 1)), dim=1
-            ).to(device)
+            x = bound_data(N_u, d).to(device)
             y = data_gen(x)
             y = y.to(device)
             x_to_train_f = torch.cat(
@@ -282,7 +281,7 @@ err_average = 0.0
 record = np.zeros([niters + 1, num_repeats])
 for repeat in range(num_repeats):
     torch.manual_seed(repeat)
-    x = torch.cat(((2 * torch.rand(N_u, d - 1))-1, torch.rand(N_u, 1)), dim=1).to(device)
+    x = bound_data(N_u, d).to(device)
     y = data_gen(x)
     y = y.to(device)
     x_to_train_f = torch.cat(
@@ -316,9 +315,7 @@ for repeat in range(num_repeats):
 
         # resample
         if itr % resample == 0:
-            x = torch.cat(
-                ((2 * torch.rand(N_u, d - 1))-1, torch.rand(N_u, 1)), dim=1
-            ).to(device)
+            x = bound_data(N_u, d).to(device)
             y = data_gen(x)
             y = y.to(device)
             x_to_train_f = torch.cat(
