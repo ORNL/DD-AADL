@@ -129,9 +129,12 @@ def loss_burgers(x, y, x_to_train_f, d, net):
 
     return res, loss
 
-
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print("device: ", device)
+
+# Hyperparameters for the neural network
+d = 100
+layers = np.array([d, 50, 50, 50, 1])
 
 # parameter list
 niters = 3000
@@ -145,21 +148,8 @@ relaxation = 0.5
 history_depth = 10
 store_each_nth = 1
 frequency = 1
+resample = 500
 average = False
-
-d = 100
-layers = np.array([d, 50, 50, 50, 1])
-
-# data
-x = 0.5 * torch.rand(N_u, d).to(device)
-y = data_gen(x)
-y = y.to(device)
-x_to_train_f = 0.5 * torch.rand(N_f, d).to(device)
-
-# evaluation
-x_val = 0.5 * torch.rand(N_u, d).to(device)
-y_val = data_gen(x_val)
-y_val = y_val.to(device)
 
 start_time = time.time()
 print((2 * "%7s    ") % ("step", "Loss"))
@@ -168,18 +158,15 @@ err_average = 0.0
 record = np.zeros([niters + 1, num_repeats])
 for repeat in range(num_repeats):
     torch.manual_seed(repeat)
-    x = torch.cat((0.5 * torch.randn(N_u, d - 1), torch.rand(N_u, 1)), dim=1).to(device)
+    x = ((2 * torch.rand(N_u, d))-1).to(device)
     y = data_gen(x)
     y = y.to(device)
     x_to_train_f = torch.cat(
-        (0.5 * torch.randn(N_f, d - 1), torch.rand(N_f, 1)), dim=1
+        ((2 * torch.rand(N_f, d - 1)) - 1, torch.rand(N_f, 1)), dim=1
     ).to(device)
 
-    x_val = torch.cat((0.5 * torch.randn(500, d - 1), torch.rand(500, 1)), dim=1).to(
-        device
-    )
+    x_val = torch.cat(((2 * torch.rand(500, d - 1))-1, torch.rand(500, 1)), dim=1).to(device)
     y_val = data_gen(x_val)
-    y_Val = y_val.to(device)
 
     net = MLP(layers)
     net.to(device)
@@ -198,14 +185,12 @@ for repeat in range(num_repeats):
             print(("%06d    " + "%1.4e    ") % (itr, loss))
 
         # resample
-        if itr % 500 == 0:
-            x = torch.cat(
-                (0.5 * torch.randn(N_u, d - 1), torch.rand(N_u, 1)), dim=1
-            ).to(device)
+        if itr % resample == 0:
+            x = torch.cat(((2 * torch.rand(N_u, d - 1))-1, torch.rand(N_u, 1)), dim=1).to(device)
             y = data_gen(x)
             y = y.to(device)
             x_to_train_f = torch.cat(
-                (0.5 * torch.randn(N_f, d - 1), torch.rand(N_f, 1)), dim=1
+                ((2 * torch.rand(N_f, d - 1)) - 1, torch.rand(N_f, 1)), dim=1
             ).to(device)
             # clear_hist(optim)
 
@@ -231,18 +216,15 @@ err_average = 0.0
 record = np.zeros([niters + 1, num_repeats])
 for repeat in range(num_repeats):
     torch.manual_seed(repeat)
-    x = torch.cat((0.5 * torch.randn(N_u, d - 1), torch.rand(N_u, 1)), dim=1).to(device)
+    x = ((2 * torch.rand(N_u, d))-1).to(device)
     y = data_gen(x)
     y = y.to(device)
     x_to_train_f = torch.cat(
-        (0.5 * torch.randn(N_f, d - 1), torch.rand(N_f, 1)), dim=1
+        ((2 * torch.rand(N_f, d - 1)) - 1, torch.rand(N_f, 1)), dim=1
     ).to(device)
 
-    x_val = torch.cat((0.5 * torch.randn(500, d - 1), torch.rand(500, 1)), dim=1).to(
-        device
-    )
+    x_val = torch.cat(((2 * torch.rand(500, d - 1))-1, torch.rand(500, 1)), dim=1).to(device)
     y_val = data_gen(x_val)
-    y_Val = y_val.to(device)
 
     net = MLP(layers)
     net.to(device)
@@ -274,14 +256,12 @@ for repeat in range(num_repeats):
             print(("%06d    " + "%1.4e    ") % (itr, loss))
 
         # resample
-        if itr % 500 == 0:
-            x = torch.cat(
-                (0.5 * torch.randn(N_u, d - 1), torch.rand(N_u, 1)), dim=1
-            ).to(device)
+        if itr % resample == 0:
+            x = torch.cat(((2 * torch.rand(N_u, d - 1))-1, torch.rand(N_u, 1)), dim=1).to(device)
             y = data_gen(x)
             y = y.to(device)
             x_to_train_f = torch.cat(
-                (0.5 * torch.randn(N_f, d - 1), torch.rand(N_f, 1)), dim=1
+                ((2 * torch.rand(N_f, d - 1)) - 1, torch.rand(N_f, 1)), dim=1
             ).to(device)
             # clear_hist(optim)
 
@@ -307,18 +287,15 @@ err_average = 0.0
 record = np.zeros([niters + 1, num_repeats])
 for repeat in range(num_repeats):
     torch.manual_seed(repeat)
-    x = torch.cat((0.5 * torch.randn(N_u, d - 1), torch.rand(N_u, 1)), dim=1).to(device)
+    x = ((2 * torch.rand(N_u, d))-1).to(device)
     y = data_gen(x)
     y = y.to(device)
     x_to_train_f = torch.cat(
-        (0.5 * torch.randn(N_f, d - 1), torch.rand(N_f, 1)), dim=1
+        ((2 * torch.rand(N_f, d - 1)) - 1, torch.rand(N_f, 1)), dim=1
     ).to(device)
 
-    x_val = torch.cat((0.5 * torch.randn(500, d - 1), torch.rand(500, 1)), dim=1).to(
-        device
-    )
+    x_val = torch.cat(((2 * torch.rand(500, d - 1))-1, torch.rand(500, 1)), dim=1).to(device)
     y_val = data_gen(x_val)
-    y_Val = y_val.to(device)
 
     net = MLP(layers)
     net.to(device)
@@ -343,13 +320,11 @@ for repeat in range(num_repeats):
 
         # resample
         if itr % 500 == 0:
-            x = torch.cat(
-                (0.5 * torch.randn(N_u, d - 1), torch.rand(N_u, 1)), dim=1
-            ).to(device)
+            x = torch.cat(((2 * torch.rand(N_u, d - 1))-1, torch.rand(N_u, 1)), dim=1).to(device)
             y = data_gen(x)
             y = y.to(device)
             x_to_train_f = torch.cat(
-                (0.5 * torch.randn(N_f, d - 1), torch.rand(N_f, 1)), dim=1
+                ((2 * torch.rand(N_f, d - 1)) - 1, torch.rand(N_f, 1)), dim=1
             ).to(device)
             clear_hist(optim)
 
