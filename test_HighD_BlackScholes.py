@@ -247,18 +247,18 @@ for repeat in range(num_repeats):
         frequency=frequency,
         average=average,
     )
-    record[0, repeat] = loss_burgers(x, y, x_to_train_f, d, net)[1].detach()
+    record[0, repeat] = loss_blackscholes(x, y, x_to_train_f, d, net)[1].detach()
 
     for itr in range(1, niters + 1):
 
         def closure():
             optim.zero_grad()
-            res, loss = loss_burgers(x, y, x_to_train_f, d, net)
+            res, loss = loss_blackscholes(x, y, x_to_train_f, d, net)
             loss.backward()
             return loss
 
         optim.step(closure)
-        loss = loss_burgers(x, y, x_to_train_f, d, net)[1]
+        loss = loss_blackscholes(x, y, x_to_train_f, d, net)[1]
         record[itr, repeat] = loss.detach()
 
         if itr % print_freq == 0:
@@ -310,18 +310,18 @@ for repeat in range(num_repeats):
     net.to(device)
     optim = torch.optim.Adam(net.parameters(), lr=lr)
     accelerate(optim, frequency=20)
-    record[0, repeat] = loss_burgers(x, y, x_to_train_f, d, net)[1].detach()
+    record[0, repeat] = loss_blackscholes(x, y, x_to_train_f, d, net)[1].detach()
 
     for itr in range(1, niters + 1):
 
         def closure():
             optim.zero_grad()
-            res, loss = loss_burgers(x, y, x_to_train_f, d, net)
+            res, loss = loss_blackscholes(x, y, x_to_train_f, d, net)
             loss.backward()
             return res, loss
 
         optim.step(closure)
-        loss = loss_burgers(x, y, x_to_train_f, d, net)[1]
+        loss = loss_blackscholes(x, y, x_to_train_f, d, net)[1]
         record[itr, repeat] = loss.detach()
 
         if itr % print_freq == 0:
