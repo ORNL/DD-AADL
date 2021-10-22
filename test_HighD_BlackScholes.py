@@ -106,7 +106,7 @@ def loss_blackscholes(x, y, x_to_train_f, d, net):
     f = u_t
     for i in range(d - 1):
         # iterate for space states
-        f = f + rate * (x[:, i].view(-1, 1) * u_x_t[:, [i]]
+        f = f + rate * (x_to_train_f[:, i].view(-1, 1)) * u_x_t[:, [i]]
 
     # laplacian? depending on the problem
     num = x_to_train_f.shape[0]
@@ -117,7 +117,7 @@ def loss_blackscholes(x, y, x_to_train_f, d, net):
         u_xx_i = autograd.grad(u_x_t, g, vec, create_graph=True)[0]
         u_xxi = u_xx_i[:, [i]]
 
-        lap = lap + 1/2*( sigma**2 ) * ( (x[:, i].view(-1, 1))**2 ) * u_xxi
+        lap = lap + 1/2*( sigma**2 ) * ( (x_to_train_f[:, i].view(-1, 1))**2 ) * u_xxi
 
     f = f + lap - rate * u
 
@@ -180,12 +180,12 @@ for repeat in range(num_repeats):
     net = MLP(layers)
     net.to(device)
     optim = torch.optim.Adam(net.parameters(), lr=lr)
-    record[0, repeat] = loss_burgers(x, y, x_to_train_f, d, net)[1].detach()
+    record[0, repeat] = loss_blackscholes(x, y, x_to_train_f, d, net)[1].detach()
 
     for itr in range(1, niters + 1):
 
         optim.zero_grad()
-        loss = loss_burgers(x, y, x_to_train_f, d, net)[1]
+        loss = loss_blackscholes(x, y, x_to_train_f, d, net)[1]
         loss.backward()
         optim.step()
         record[itr, repeat] = loss.detach()
