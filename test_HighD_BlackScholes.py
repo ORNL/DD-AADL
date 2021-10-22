@@ -137,6 +137,10 @@ def loss_blackscholes(x, y, x_to_train_f, d, net):
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print("device: ", device)
 
+# parameters of the PDE
+rate = 0.1
+sigma = 0.2
+
 # Hyperparameters for the neural network
 d = 100
 layers = np.array([d, 50, 50, 50, 1])
