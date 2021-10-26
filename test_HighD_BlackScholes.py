@@ -13,9 +13,9 @@ import AADL as AADL
 
 # ## Problem Setup
 #
-# Consider Burgers Equation
+# Consider Black-Scholes Equation
 #
-# $$ u_t + u \cdot \nabla u - \Delta u = f         $$
+# $$ u_t + rate * (x \cdot ux) + 0.5 * sigma**2 * (x**2 \cdot uxx) - rate * u = f         $$
 #
 #
 # Suppose we define $u$ as a function  composite of polynomials and expenential fucntions, i.e.
@@ -35,7 +35,7 @@ def data_gen(x):
 
 
 def forcing(x):
-    # forcing term for the burgers equation
+    # forcing term for the blackscholes equation
     d = x.shape[1]
     u = data_gen(x)
     ut = -u
@@ -58,7 +58,7 @@ def forcing(x):
 def bound_data(n, d):
     # n -- number of samples on boundary, may not be precise
     # d -- dimension of problem, last dim time
-    # consider a boxed region with each axis from -1 to 1, time should be 0
+    # consider a boxed region with each axis from -1 to 1, time should be 1
     n0 = math.floor(n/d/2) # number of samples on each face of boundary
     x = torch.empty(n,d)
     for i in range(d-1):
@@ -85,7 +85,6 @@ def loss_blackscholes(x, y, x_to_train_f, d, net):
     :return:  loss
     """
 
-    ### u_t + x_1*u_x1 + x_2*u_x2 + ... + x_d*u_xd = 0 with boundary and initial condition
     loss_fun = nn.MSELoss()
     loss_BC = loss_fun(net.forward(x), y)
 
