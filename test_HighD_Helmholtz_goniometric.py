@@ -110,7 +110,7 @@ def loss_helmholtz(x, y, x_to_train_f, d, net):
 
         lap = lap + u_xxi
 
-    f = -lap + u ** 2
+    f = -lap + u ** 3
 
     ## forcing term
     ff = forcing(g)
