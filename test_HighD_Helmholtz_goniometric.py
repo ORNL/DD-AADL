@@ -11,6 +11,8 @@ from src.utils import count_parameters
 
 import copy
 
+import sys
+sys.path.append('../AADL')
 import AADL as AADL
 
 
@@ -131,7 +133,7 @@ print('device: ', device)
 
 # Hyperparameters for the neural network
 d = 100
-layers = np.array([d, 50, 50, 50, 1])
+layers = np.array([d, 100, 100, 100, 1])
 
 # parameter list
 niters = 3000
@@ -145,14 +147,17 @@ relaxation = 0.5
 history_depth = 10
 store_each_nth = 1
 frequency = 5
-resample = 500
+resample = 50
 average = True
 
 start_time = time.time()
 print((2 * "%7s    ") % ("step", "Loss"))
 err_average = 0.0
 
-record = np.zeros([niters + 1, num_repeats])
+niters_default = 15 * niters
+
+record = np.zeros([niters_default + 1, num_repeats])
+times = np.zeros([niters_default + 1, num_repeats])
 for repeat in range(num_repeats):
     torch.manual_seed(repeat)
     x = bound_data(N_u, d).to(device)
@@ -170,14 +175,16 @@ for repeat in range(num_repeats):
     net.to(device)
     optim = torch.optim.Adam(net.parameters(), lr=lr)
     record[0, repeat] = loss_helmholtz(x, y, x_to_train_f, d, net)[1].detach()
-
-    for itr in range(1, niters + 1):
+    
+    aux_start_time = time.time()
+    for itr in range(1, niters_default + 1):
 
         optim.zero_grad()
         loss = loss_helmholtz(x, y, x_to_train_f, d, net)[1]
         loss.backward()
         optim.step()
         record[itr, repeat] = loss.detach()
+        times[itr, repeat] = time.time() - aux_start_time
 
         if itr % print_freq == 0:
             print(("%06d    " + "%1.4e    ") % (itr, loss))
@@ -192,12 +199,10 @@ for repeat in range(num_repeats):
             ).to(device)
             # clear_hist(optim)
 
-        """
         # change learning rate
         if itr % 1000 == 0:
             for p in optim.param_groups:
                 p['lr'] *= 0.5
-        """
 
     # Validation
     err = torch.mean(torch.abs(y_val - net(x_val)))
@@ -209,9 +214,12 @@ elapsed = time.time() - start_time
 print("Training time: %.2f" % (elapsed))
 
 record_default = record
+times_default = times
 
+niters_AADL = 4 * niters
 err_average = 0.0
-record = np.zeros([niters + 1, num_repeats])
+record = np.zeros([niters_AADL + 1, num_repeats])
+times = np.zeros([niters_AADL + 1, num_repeats])
 for repeat in range(num_repeats):
     torch.manual_seed(repeat)
     x = bound_data(N_u, d).to(device)
@@ -239,7 +247,8 @@ for repeat in range(num_repeats):
     )
     record[0, repeat] = loss_helmholtz(x, y, x_to_train_f, d, net)[1].detach()
 
-    for itr in range(1, niters + 1):
+    aux_start_time = time.time()
+    for itr in range(1, niters_AADL + 1):
 
         def closure():
             optim.zero_grad()
@@ -247,10 +256,10 @@ for repeat in range(num_repeats):
             loss.backward()
             return loss
 
-
         optim.step(closure)
         loss = loss_helmholtz(x, y, x_to_train_f, d, net)[1]
         record[itr, repeat] = loss.detach()
+        times[itr, repeat] = time.time() - aux_start_time
 
         if itr % print_freq == 0:
             print(("%06d    " + "%1.4e    ") % (itr, loss))
@@ -265,12 +274,10 @@ for repeat in range(num_repeats):
             ).to(device)
             # clear_hist(optim)
 
-        """
         # change learning rate
         if itr % 1000 == 0:
             for p in optim.param_groups:
                 p['lr'] *= 0.5
-        """
 
     # Validation
     err = torch.mean(torch.abs(y_val - net(x_val)))
@@ -282,9 +289,12 @@ elapsed = time.time() - start_time
 print("Training time: %.2f" % (elapsed))
 
 record_AADL = record
+times_AADL = times
 
+niters_DDAADL = niters
 err_average = 0.0
-record = np.zeros([niters + 1, num_repeats])
+record = np.zeros([niters_DDAADL + 1, num_repeats])
+times = np.zeros([niters_DDAADL + 1, num_repeats])
 for repeat in range(num_repeats):
     torch.manual_seed(repeat)
     x = bound_data(N_u, d).to(device)
@@ -304,7 +314,8 @@ for repeat in range(num_repeats):
     accelerate(optim, relaxation=1.0, store_each_nth=store_each_nth, history_depth=history_depth, frequency=1)
     record[0, repeat] = loss_helmholtz(x, y, x_to_train_f, d, net)[1].detach()
 
-    for itr in range(1, niters + 1):
+    aux_start_time = time.time()
+    for itr in range(1, niters_DDAADL + 1):
 
         def closure():
             optim.zero_grad()
@@ -312,10 +323,10 @@ for repeat in range(num_repeats):
             loss.backward()
             return res, loss
 
-
         optim.step(closure)
         loss = loss_helmholtz(x, y, x_to_train_f, d, net)[1]
         record[itr, repeat] = loss.detach()
+        times[itr, repeat] = time.time() - aux_start_time
 
         if itr % print_freq == 0:
             print(("%06d    " + "%1.4e    ") % (itr, loss))
@@ -330,12 +341,10 @@ for repeat in range(num_repeats):
             ).to(device)
             clear_hist(optim)
 
-        """
         # change learning rate
         if itr % 1000 == 0:
             for p in optim.param_groups:
                 p['lr'] *= 0.5
-        """
 
     # Validation
     err = torch.mean(torch.abs(y_val - net(x_val)))
@@ -347,41 +356,45 @@ elapsed = time.time() - start_time
 print("Training time: %.2f" % (elapsed))
 
 record_DDAADL = record
+times_DDAADL = times
 
 import math
 import matplotlib.pyplot as plt
 
 avg = np.mean(record_default, axis=1)
 std = np.std(record_default, axis=1)
+times_avg_default = np.mean(times_default, axis=1)
 
 fig = plt.figure()
-plt.plot(range(niters + 1), avg, color="b", linewidth=2)
+plt.plot(range(niters + 1), avg[0:niters+1], color="b", linewidth=2)
 plt.fill_between(
     range(niters + 1),
-    avg - std * 2 / math.sqrt(num_repeats),
-    avg + std * 2 / math.sqrt(num_repeats),
+    avg[0:niters+1] - std[0:niters+1] * 2 / math.sqrt(num_repeats),
+    avg[0:niters+1] + std[0:niters+1] * 2 / math.sqrt(num_repeats),
     color="b",
     alpha=0.2,
 )
 
 AADL_avg = np.mean(record_AADL, axis=1)
 AADL_std = np.std(record_AADL, axis=1)
-plt.plot(range(niters + 1), AADL_avg, color="g", linewidth=2)
+times_avg_AADL = np.mean(times_AADL, axis=1)
+plt.plot(range(niters + 1), AADL_avg[0:niters+1], color="g", linewidth=2)
 plt.fill_between(
     range(niters + 1),
-    AADL_avg - AADL_std * 2 / math.sqrt(num_repeats),
-    AADL_avg + AADL_std * 2 / math.sqrt(num_repeats),
+    AADL_avg[0:niters+1] - AADL_std[0:niters+1] * 2 / math.sqrt(num_repeats),
+    AADL_avg[0:niters+1] + AADL_std[0:niters+1] * 2 / math.sqrt(num_repeats),
     color="g",
     alpha=0.2,
 )
 
 DDAADL_avg = np.mean(record_DDAADL, axis=1)
 DDAADL_std = np.std(record_DDAADL, axis=1)
-plt.plot(range(niters + 1), DDAADL_avg, color="r", linewidth=2)
+times_avg_DDAADL = np.mean(times_DDAADL, axis=1)
+plt.plot(range(niters + 1), DDAADL_avg[0:niters+1], color="r", linewidth=2)
 plt.fill_between(
     range(niters + 1),
-    DDAADL_avg - DDAADL_std * 2 / math.sqrt(num_repeats),
-    DDAADL_avg + DDAADL_std * 2 / math.sqrt(num_repeats),
+    DDAADL_avg[0:niters+1] - DDAADL_std[0:niters+1] * 2 / math.sqrt(num_repeats),
+    DDAADL_avg[0:niters+1] + DDAADL_std[0:niters+1] * 2 / math.sqrt(num_repeats),
     color="r",
     alpha=0.2,
 )
@@ -391,5 +404,52 @@ plt.ylim([1.0e-8, 1.0e2])
 plt.legend(["Adam", "Adam + AADL", "Adam + Data Driven AADL"])
 plt.xlabel("Number of iterations")
 plt.ylabel("Validation Mean Squared Error")
-plt.title(f"{d}d Helmoltz' Equation")
-fig.savefig("HighDBurgers_solution.jpg", dpi=500)
+plt.title(f"{d}d Helmholtz Equation - Trigonometric Solution")
+fig.savefig("HighDBurgers_solution_epochs.jpg", dpi=500)
+
+finish_time = min(times_avg_default[-1], times_avg_AADL[-1], times_avg_DDAADL[-1])
+
+avg_time_count = 0
+while(times_avg_default[avg_time_count]<finish_time):
+    avg_time_count = avg_time_count + 1
+
+avg_AADL_time_count = 0
+while(times_avg_AADL[avg_AADL_time_count]<finish_time):
+    avg_AADL_time_count = avg_AADL_time_count + 1
+
+avg_DDAADL_time_count = 0
+while(times_avg_DDAADL[avg_DDAADL_time_count]<finish_time):
+    avg_DDAADL_time_count = avg_DDAADL_time_count + 1
+
+fig2 = plt.figure()
+plt.plot(times_avg_default[0:avg_time_count], avg[0:avg_time_count], color="b", linewidth=2)
+plt.fill_between(
+    times_avg_default[0:avg_time_count],
+    avg[0:avg_time_count] - std[0:avg_time_count] * 2 / math.sqrt(num_repeats),
+    avg[0:avg_time_count] + std[0:avg_time_count] * 2 / math.sqrt(num_repeats),
+    color="b",
+    alpha=0.2,
+)
+plt.plot(times_avg_AADL[0:avg_AADL_time_count], AADL_avg[0:avg_AADL_time_count], color="g", linewidth=2)
+plt.fill_between(
+    times_avg_AADL[0:avg_AADL_time_count],
+    AADL_avg[0:avg_AADL_time_count] - AADL_std[0:avg_AADL_time_count] * 2 / math.sqrt(num_repeats),
+    AADL_avg[0:avg_AADL_time_count] + AADL_std[0:avg_AADL_time_count] * 2 / math.sqrt(num_repeats),
+    color="g",
+    alpha=0.2,
+)
+plt.plot(times_avg_DDAADL[0:avg_DDAADL_time_count], DDAADL_avg[0:avg_DDAADL_time_count], color="r", linewidth=2)
+plt.fill_between(
+    times_avg_DDAADL[0:avg_DDAADL_time_count],
+    DDAADL_avg[0:avg_DDAADL_time_count] - DDAADL_std[0:avg_DDAADL_time_count] * 2 / math.sqrt(num_repeats),
+    DDAADL_avg[0:avg_DDAADL_time_count] + DDAADL_std[0:avg_DDAADL_time_count] * 2 / math.sqrt(num_repeats),
+    color="r",
+    alpha=0.2,
+)
+plt.yscale("log")
+plt.ylim([1.0e-8, 1.0e2])
+plt.legend(["Adam", "Adam + AADL", "Adam + Data Driven AADL"])
+plt.xlabel("Wall-clock time (seconds)")
+plt.ylabel("Validation Mean Squared Error")
+plt.title(f"{d}d Helmholtz Equation - Trigonometric Solution")
+fig2.savefig("HighDBurgers_solution_time.jpg", dpi=500)
