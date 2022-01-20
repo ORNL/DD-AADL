@@ -36,6 +36,38 @@ class MLP(nn.Module):
         return x
 
 
+class ResMLP(nn.Module):
+    def __init__(self, layers):
+        super().__init__()
+        # input layers as list, array or tensor
+        self.activation = nn.ReLU()  # activation function
+        self.net_len = len(layers)
+
+        self.linears = nn.ModuleList(
+            [nn.Linear(layers[i], layers[i + 1]) for i in range(self.net_len - 1)]
+        )
+
+        # initialization of weights
+        for i in range(len(layers) - 1):
+            nn.init.xavier_normal_(self.linears[i].weight.data, gain=1.0)
+            nn.init.zeros_(self.linears[i].bias.data)
+
+    def forward(self, x):
+        if torch.is_tensor(x) != True:
+            x = torch.from_numpy(
+                x
+            )  # TODO: check whether this will lead to device errors
+
+        # no scaling of input data
+        x = x.float()
+
+        for i in range(self.net_len - 2):
+            x = self.activation(self.linears[i](x)) + self.linears[i](x)
+
+        x = self.linears[-1](x)  # no activation for last layer
+
+        return x
+
 if __name__ == "__main__":
 
     # test case
