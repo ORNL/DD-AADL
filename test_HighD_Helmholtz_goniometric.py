@@ -11,21 +11,16 @@ from src.utils import count_parameters
 
 import copy
 
-import sys
-sys.path.append('../AADL')
 import AADL as AADL
 
 
 # ## Problem Setup
 #
-# Consider Helmolts Equation
+# Consider Helmholtz Equation
 #
-# $$ u^2 - \Delta u = f         $$
-#
-#
-# Suppose we define $u$ as a function  composite of polynomials and expenential fucntions, i.e.
-#
-# $$ u = (x_1 -1)(x_1 +1) \dots (x_n -1)(x_n + 1)$$
+# $$ u^3 - \Delta u = f         $$
+
+## finish
 
 
 def data_gen(x):
@@ -133,12 +128,12 @@ print('device: ', device)
 
 # Hyperparameters for the neural network
 d = 100
-layers = np.array([d, 100, 100, 100, 1])
+layers = np.array([d, 50, 50, 50, 1])
 
 # parameter list
 niters = 3000
-N_u = 400
-N_f = 4000
+N_u = 4000
+N_f = 40000
 lr = 0.01
 print_freq = 100
 num_repeats = 1
@@ -163,11 +158,9 @@ for repeat in range(num_repeats):
     x = bound_data(N_u, d).to(device)
     y = data_gen(x)
     y = y.to(device)
-    x_to_train_f = torch.cat(
-        ((2 * torch.rand(N_f, d - 1)) - 1, torch.rand(N_f, 1)), dim=1
-    ).to(device)
+    x_to_train_f = ((2 * torch.rand(N_f, d)) - 1).to(device)
 
-    x_val = torch.cat(((2 * torch.rand(500, d - 1)) - 1, torch.rand(500, 1)), dim=1).to(device)
+    x_val = ((2 * torch.rand(500, d)) - 1).to(device)
     y_val = data_gen(x_val)
     y_Val = y_val.to(device)
 
@@ -194,9 +187,7 @@ for repeat in range(num_repeats):
             x = bound_data(N_u, d).to(device)
             y = data_gen(x)
             y = y.to(device)
-            x_to_train_f = torch.cat(
-                ((2 * torch.rand(N_f, d - 1)) - 1, torch.rand(N_f, 1)), dim=1
-            ).to(device)
+            x_to_train_f = ((2 * torch.rand(N_f, d)) - 1).to(device)
             # clear_hist(optim)
 
         # change learning rate
@@ -225,11 +216,9 @@ for repeat in range(num_repeats):
     x = bound_data(N_u, d).to(device)
     y = data_gen(x)
     y = y.to(device)
-    x_to_train_f = torch.cat(
-        ((2 * torch.rand(N_f, d - 1)) - 1, torch.rand(N_f, 1)), dim=1
-    ).to(device)
+    x_to_train_f = ((2 * torch.rand(N_f, d)) - 1).to(device)
 
-    x_val = torch.cat(((2 * torch.rand(500, d - 1)) - 1, torch.rand(500, 1)), dim=1).to(device)
+    x_val = ((2 * torch.rand(500, d)) - 1).to(device)
     y_val = data_gen(x_val)
     y_Val = y_val.to(device)
 
@@ -269,9 +258,7 @@ for repeat in range(num_repeats):
             x = bound_data(N_u, d).to(device)
             y = data_gen(x)
             y = y.to(device)
-            x_to_train_f = torch.cat(
-                ((2 * torch.rand(N_f, d - 1)) - 1, torch.rand(N_f, 1)), dim=1
-            ).to(device)
+            x_to_train_f = ((2 * torch.rand(N_f, d)) - 1).to(device)
             # clear_hist(optim)
 
         # change learning rate
@@ -300,11 +287,9 @@ for repeat in range(num_repeats):
     x = bound_data(N_u, d).to(device)
     y = data_gen(x)
     y = y.to(device)
-    x_to_train_f = torch.cat(
-        ((2 * torch.rand(N_f, d - 1)) - 1, torch.rand(N_f, 1)), dim=1
-    ).to(device)
+    x_to_train_f = ((2 * torch.rand(N_f, d)) - 1).to(device)
 
-    x_val = torch.cat(((2 * torch.rand(500, d - 1)) - 1, torch.rand(500, 1)), dim=1).to(device)
+    x_val = ((2 * torch.rand(500, d)) - 1).to(device)
     y_val = data_gen(x_val)
     y_Val = y_val.to(device)
 
@@ -336,9 +321,7 @@ for repeat in range(num_repeats):
             x = bound_data(N_u, d).to(device)
             y = data_gen(x)
             y = y.to(device)
-            x_to_train_f = torch.cat(
-                ((2 * torch.rand(N_f, d - 1)) - 1, torch.rand(N_f, 1)), dim=1
-            ).to(device)
+            x_to_train_f = ((2 * torch.rand(N_f, d)) - 1).to(device)
             clear_hist(optim)
 
         # change learning rate
@@ -400,12 +383,12 @@ plt.fill_between(
 )
 
 plt.yscale("log")
-plt.ylim([1.0e-8, 1.0e2])
+plt.ylim([1.0e-10, 1.0])
 plt.legend(["Adam", "Adam + AADL", "Adam + Data Driven AADL"])
 plt.xlabel("Number of iterations")
 plt.ylabel("Validation Mean Squared Error")
 plt.title(f"{d}d Helmholtz Equation - Trigonometric Solution")
-fig.savefig("HighDBurgers_solution_epochs.jpg", dpi=500)
+fig.savefig("HighDHelmholtz_solution_epochs.jpg", dpi=500)
 
 finish_time = min(times_avg_default[-1], times_avg_AADL[-1], times_avg_DDAADL[-1])
 
@@ -447,9 +430,9 @@ plt.fill_between(
     alpha=0.2,
 )
 plt.yscale("log")
-plt.ylim([1.0e-8, 1.0e2])
+plt.ylim([1.0e-10, 1.0])
 plt.legend(["Adam", "Adam + AADL", "Adam + Data Driven AADL"])
 plt.xlabel("Wall-clock time (seconds)")
 plt.ylabel("Validation Mean Squared Error")
 plt.title(f"{d}d Helmholtz Equation - Trigonometric Solution")
-fig2.savefig("HighDBurgers_solution_time.jpg", dpi=500)
+fig2.savefig("HighDHelmholtz_solution_time.jpg", dpi=500)
