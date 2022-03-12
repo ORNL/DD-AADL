@@ -194,7 +194,7 @@ for repeat in range(num_repeats):
 
     x_val = ((2 * torch.rand(500, d)) - 1).to(device)
     y_val = data_gen(x_val, A, beta, eps)
-    y_Val = y_val.to(device)
+    y_val = y_val.to(device)
 
     net = MLP(layers)
     net.to(device)
@@ -243,6 +243,7 @@ niters_AADL = 4 * niters
 err_average = 0.0
 record = np.zeros([niters_AADL + 1, num_repeats])
 times = np.zeros([niters_AADL + 1, num_repeats])
+
 for repeat in range(num_repeats):
     torch.manual_seed(repeat)
     x = bound_data(N_u, d).to(device)
@@ -252,7 +253,7 @@ for repeat in range(num_repeats):
 
     x_val = ((2 * torch.rand(500, d )) - 1).to(device)
     y_val = data_gen(x_val, A, beta, eps)
-    y_Val = y_val.to(device)
+    y_val = y_val.to(device)
 
     net = MLP(layers)
     net.to(device)
@@ -315,6 +316,7 @@ niters_DDAADL = niters
 err_average = 0.0
 record = np.zeros([niters_DDAADL + 1, num_repeats])
 times = np.zeros([niters_DDAADL + 1, num_repeats])
+
 for repeat in range(num_repeats):
     torch.manual_seed(repeat)
     x = bound_data(N_u, d).to(device)
@@ -324,7 +326,7 @@ for repeat in range(num_repeats):
 
     x_val = ((2 * torch.rand(500, d)) - 1).to(device)
     y_val = data_gen(x_val, A, beta, eps)
-    y_Val = y_val.to(device)
+    y_val = y_val.to(device)
 
     net = MLP(layers)
     net.to(device)
@@ -334,7 +336,6 @@ for repeat in range(num_repeats):
 
     aux_start_time = time.time()
     for itr in range(1, niters_DDAADL + 1):
-
         def closure():
             optim.zero_grad()
             res, loss = loss_helmholtz(x, y, x_to_train_f, d, net, A, beta, eps)
@@ -469,3 +470,4 @@ plt.xlabel("Wall-clock time (seconds)")
 plt.ylabel("Validation Mean Squared Error")
 plt.title(f"{d}d Helmholtz Equation - Boundary Layer Solution")
 fig2.savefig("HighDHelmholtz_solution_time.jpg", dpi=500)
+

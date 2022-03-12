@@ -22,7 +22,6 @@ import AADL as AADL
 
 ## finish
 
-
 def data_gen(x):
     # solution to Helmholtz equation
     d = x.shape[1]
@@ -41,8 +40,11 @@ def forcing(x):
 
 
     # laplacian
-    lap = -pi**2 * torch.prod(torch.sin(x), dim=1).view(-1,1) - 4*pi**2*torch.prod(torch.sin(2*x), dim=1).view(-1,1) - 9*pi**2*torch.prod(torch.sin(3*x), dim=1).view(-1,1)
-    lap = 3 * lap
+    lap = -pi ** 2 * torch.prod(torch.sin(pi*x), dim=1).view(-1, 1) - 4 * pi ** 2 * torch.prod(torch.sin(2 *pi* x),
+                                                                                            dim=1).view(-1,
+                                                                                                        1) - 9 * pi ** 2 * torch.prod(
+        torch.sin(3 *pi* x), dim=1).view(-1, 1)
+    lap = d * lap
 
     f = -lap + u**3
 
@@ -123,6 +125,7 @@ def loss_helmholtz(x, y, x_to_train_f, d, net):
     return res, loss
 
 
+
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print('device: ', device)
 
@@ -132,8 +135,8 @@ layers = np.array([d, 50, 50, 50, 1])
 
 # parameter list
 niters = 3000
-N_u = 4000
-N_f = 40000
+N_u = 400
+N_f = 4000
 lr = 0.01
 print_freq = 100
 num_repeats = 1
@@ -162,7 +165,7 @@ for repeat in range(num_repeats):
 
     x_val = ((2 * torch.rand(500, d)) - 1).to(device)
     y_val = data_gen(x_val)
-    y_Val = y_val.to(device)
+    y_val = y_val.to(device)
 
     net = MLP(layers)
     net.to(device)
@@ -211,6 +214,7 @@ niters_AADL = 4 * niters
 err_average = 0.0
 record = np.zeros([niters_AADL + 1, num_repeats])
 times = np.zeros([niters_AADL + 1, num_repeats])
+
 for repeat in range(num_repeats):
     torch.manual_seed(repeat)
     x = bound_data(N_u, d).to(device)
@@ -220,7 +224,7 @@ for repeat in range(num_repeats):
 
     x_val = ((2 * torch.rand(500, d)) - 1).to(device)
     y_val = data_gen(x_val)
-    y_Val = y_val.to(device)
+    y_val = y_val.to(device)
 
     net = MLP(layers)
     net.to(device)
@@ -282,6 +286,7 @@ niters_DDAADL = niters
 err_average = 0.0
 record = np.zeros([niters_DDAADL + 1, num_repeats])
 times = np.zeros([niters_DDAADL + 1, num_repeats])
+
 for repeat in range(num_repeats):
     torch.manual_seed(repeat)
     x = bound_data(N_u, d).to(device)
@@ -301,7 +306,6 @@ for repeat in range(num_repeats):
 
     aux_start_time = time.time()
     for itr in range(1, niters_DDAADL + 1):
-
         def closure():
             optim.zero_grad()
             res, loss = loss_helmholtz(x, y, x_to_train_f, d, net)
