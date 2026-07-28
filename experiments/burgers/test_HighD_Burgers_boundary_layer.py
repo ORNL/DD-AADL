@@ -1,3 +1,7 @@
+import sys
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
+
 import time
 import math
 import torch
@@ -19,7 +23,7 @@ import AADL as AADL
 # $$ u_t + u \cdot \nabla u - \Delta u = f         $$
 
 def data_gen(x, A, beta, eps):
-    # solution to Helmholtz equation
+    # solution to Burgers equation
     d = x.shape[1]
     n = x.shape[0]
     sol = torch.ones(n, 1, device=x.device)
@@ -84,17 +88,17 @@ def forcing(x, A, beta, eps):
 def bound_data(n, d):
     # n -- number of samples on boundary, may not be precise
     # d -- dimension of problem, last dim time
-    # consider a boxed region with each axis from -1 to 1, time should be 0
+    # consider a boxed region with spatial axes from 0 to 1, time from 0 to 1
     n0 = math.floor(n/d/2) # number of samples on each face of boundary
     x = torch.empty(n,d)
     for i in range(d-1):
-        x0 = torch.cat(((2 * torch.rand(n0, d-1)) - 1, torch.rand(n0, 1)), dim=1)
-        x0[:,i] = -1. ; x[i*2*n0:i*2*n0+n0,:] = x0
-        x0 = torch.cat(((2 * torch.rand(n0, d - 1)) - 1, torch.rand(n0, 1)), dim=1)
+        x0 = torch.cat((torch.rand(n0, d-1), torch.rand(n0, 1)), dim=1)
+        x0[:,i] = 0. ; x[i*2*n0:i*2*n0+n0,:] = x0
+        x0 = torch.cat((torch.rand(n0, d - 1), torch.rand(n0, 1)), dim=1)
         x0[:,i] = 1. ;  x[i*2*n0+n0:(i+1)*2*n0,:] = x0
     # for last dim -- time
     n1 = n - 2*n0*(d-1)
-    x0 = 2*torch.rand(n1,d) - 1.
+    x0 = torch.rand(n1,d)
     x0[:,-1] = 0. ; x[n-n1:,:] = x0
 
 
@@ -194,12 +198,12 @@ for repeat in range(num_repeats):
     y = data_gen(x, A, beta, eps)
     y = y.to(device)
     x_to_train_f = torch.cat(
-        ((2 * torch.rand(N_f, d - 1)) - 1, torch.rand(N_f, 1)), dim=1
+        (torch.rand(N_f, d - 1), torch.rand(N_f, 1)), dim=1
     ).to(device)
 
-    x_val = torch.cat(((2 * torch.rand(500, d - 1)) - 1, torch.rand(500, 1)), dim=1).to(device)
+    x_val = torch.cat((torch.rand(500, d - 1), torch.rand(500, 1)), dim=1).to(device)
     y_val = data_gen(x_val, A, beta, eps)
-    y_Val = y_val.to(device)
+    y_val = y_val.to(device)
 
     net = MLP(layers)
     net.to(device)
@@ -223,7 +227,7 @@ for repeat in range(num_repeats):
             y = data_gen(x, A, beta, eps)
             y = y.to(device)
             x_to_train_f = torch.cat(
-                ((2 * torch.rand(N_f, d - 1)) - 1, torch.rand(N_f, 1)), dim=1
+                (torch.rand(N_f, d - 1), torch.rand(N_f, 1)), dim=1
             ).to(device)
             # clear_hist(optim)
 
@@ -254,12 +258,12 @@ for repeat in range(num_repeats):
     y = data_gen(x, A, beta, eps)
     y = y.to(device)
     x_to_train_f = torch.cat(
-        ((2 * torch.rand(N_f, d - 1)) - 1, torch.rand(N_f, 1)), dim=1
+        (torch.rand(N_f, d - 1), torch.rand(N_f, 1)), dim=1
     ).to(device)
 
-    x_val = torch.cat(((2 * torch.rand(500, d - 1)) - 1, torch.rand(500, 1)), dim=1).to(device)
+    x_val = torch.cat((torch.rand(500, d - 1), torch.rand(500, 1)), dim=1).to(device)
     y_val = data_gen(x_val, A, beta, eps)
-    y_Val = y_val.to(device)
+    y_val = y_val.to(device)
 
     net = MLP(layers)
     net.to(device)
@@ -275,17 +279,19 @@ for repeat in range(num_repeats):
     )
     record[0, repeat] = loss_burgers(x, y, x_to_train_f, d, net, A, beta, eps)[1].detach()
 
+    _last_loss = [None]
     for itr in range(1, niters + 1):
 
         def closure():
             optim.zero_grad()
-            res, loss = loss_burgers(x, y, x_to_train_f, d, net, A, beta, eps)
+            _, loss = loss_burgers(x, y, x_to_train_f, d, net, A, beta, eps)
             loss.backward()
+            _last_loss[0] = loss
             return loss
 
 
         optim.step(closure)
-        loss = loss_burgers(x, y, x_to_train_f, d, net, A, beta, eps)[1]
+        loss = _last_loss[0]
         record[itr, repeat] = loss.detach()
 
         if itr % print_freq == 0:
@@ -297,7 +303,7 @@ for repeat in range(num_repeats):
             y = data_gen(x, A, beta, eps)
             y = y.to(device)
             x_to_train_f = torch.cat(
-                ((2 * torch.rand(N_f, d - 1)) - 1, torch.rand(N_f, 1)), dim=1
+                (torch.rand(N_f, d - 1), torch.rand(N_f, 1)), dim=1
             ).to(device)
             # clear_hist(optim)
 
@@ -328,12 +334,12 @@ for repeat in range(num_repeats):
     y = data_gen(x, A, beta, eps)
     y = y.to(device)
     x_to_train_f = torch.cat(
-        ((2 * torch.rand(N_f, d - 1)) - 1, torch.rand(N_f, 1)), dim=1
+        (torch.rand(N_f, d - 1), torch.rand(N_f, 1)), dim=1
     ).to(device)
 
-    x_val = torch.cat(((2 * torch.rand(500, d - 1)) - 1, torch.rand(500, 1)), dim=1).to(device)
+    x_val = torch.cat((torch.rand(500, d - 1), torch.rand(500, 1)), dim=1).to(device)
     y_val = data_gen(x_val, A, beta, eps)
-    y_Val = y_val.to(device)
+    y_val = y_val.to(device)
 
     net = MLP(layers)
     net.to(device)
@@ -341,17 +347,19 @@ for repeat in range(num_repeats):
     accelerate(optim, relaxation=1.0, store_each_nth=store_each_nth, history_depth=history_depth, frequency=1)
     record[0, repeat] = loss_burgers(x, y, x_to_train_f, d, net)[1].detach()
 
+    _last_loss = [None]
     for itr in range(1, niters + 1):
 
         def closure():
             optim.zero_grad()
             res, loss = loss_burgers(x, y, x_to_train_f, d, net, A, beta, eps)
             loss.backward()
+            _last_loss[0] = loss
             return res, loss
 
 
         optim.step(closure)
-        loss = loss_burgers(x, y, x_to_train_f, d, net, A, beta, eps)[1]
+        loss = _last_loss[0]
         record[itr, repeat] = loss.detach()
 
         if itr % print_freq == 0:
@@ -363,7 +371,7 @@ for repeat in range(num_repeats):
             y = data_gen(x, A, beta, eps)
             y = y.to(device)
             x_to_train_f = torch.cat(
-                ((2 * torch.rand(N_f, d - 1)) - 1, torch.rand(N_f, 1)), dim=1
+                (torch.rand(N_f, d - 1), torch.rand(N_f, 1)), dim=1
             ).to(device)
             clear_hist(optim)
 

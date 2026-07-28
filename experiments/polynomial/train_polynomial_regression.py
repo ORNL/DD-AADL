@@ -1,5 +1,9 @@
 # test problem
 from __future__ import print_function
+import sys
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
+
 import torch
 
 from src.anderson_acceleration import *

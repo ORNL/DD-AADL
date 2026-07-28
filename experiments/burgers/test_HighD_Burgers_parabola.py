@@ -1,3 +1,7 @@
+import sys
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
+
 import time
 import math
 import torch
@@ -13,9 +17,9 @@ import AADL as AADL
 
 # ## Problem Setup
 #
-# Consider Black-Scholes Equation
+# Consider Burgers Equation
 #
-# $$ u_t + rate * (x \cdot ux) + 0.5 * sigma**2 * (x**2 \cdot uxx) - rate * u = f         $$
+# $$ u_t + u \cdot \nabla u - \Delta u = f         $$
 #
 #
 # Suppose we define $u$ as a function  composite of polynomials and expenential fucntions, i.e.
@@ -35,30 +39,27 @@ def data_gen(x):
 
 
 def forcing(x):
-    # forcing term for the blackscholes equation
+    # forcing term for the burgers equation
     d = x.shape[1]
     u = data_gen(x)
     ut = -u
     f = ut
 
-    # convective term
     for i in range(d - 1):
         ux_i = u / ((x[:, i] - 1) * (x[:, i] + 1)).view(-1, 1)
         ux_i = 2 * x[:, i].view(-1, 1) * ux_i
-        f = f + rate * x[:, i].view(-1, 1) * ux_i
-    # diffusive term
+        f = f + u * ux_i
+    # laplacian
     for i in range(d - 1):
         uxx_i = 2 * u / ((x[:, i] - 1) * (x[:, i] + 1)).view(-1, 1)
-        f = f + 1/2*( sigma**2 ) * ( (x[:, i].view(-1, 1))**2 ) * uxx_i
-    # reactive term
-    f = f - rate * u 
+        f = f - uxx_i
 
     return f
 
 def bound_data(n, d):
     # n -- number of samples on boundary, may not be precise
     # d -- dimension of problem, last dim time
-    # consider a boxed region with each axis from -1 to 1, time should be 1
+    # consider a boxed region with each axis from -1 to 1, time should be 0
     n0 = math.floor(n/d/2) # number of samples on each face of boundary
     x = torch.empty(n,d)
     for i in range(d-1):
@@ -69,13 +70,13 @@ def bound_data(n, d):
     # for last dim -- time
     n1 = n - 2*n0*(d-1)
     x0 = 2*torch.rand(n1,d) - 1.
-    x0[:,-1] = 1. ; x[n-n1:,:] = x0
+    x0[:,-1] = 0. ; x[n-n1:,:] = x0
 
 
     return x
 
 # define a test problem
-def loss_blackscholes(x, y, x_to_train_f, d, net):
+def loss_burgers(x, y, x_to_train_f, d, net):
     """
     :param x: input for boundary condition
     :param y: boundary data
@@ -85,6 +86,7 @@ def loss_blackscholes(x, y, x_to_train_f, d, net):
     :return:  loss
     """
 
+    ### u_t + u*u_x1 + u^2*u_x2 + ... + u^d*u_xd = 0 with boundary and initial condition
     loss_fun = nn.MSELoss()
     loss_BC = loss_fun(net.forward(x), y)
 
@@ -105,7 +107,7 @@ def loss_blackscholes(x, y, x_to_train_f, d, net):
     f = u_t
     for i in range(d - 1):
         # iterate for space states
-        f = f + rate * (x_to_train_f[:, i].view(-1, 1)) * u_x_t[:, [i]]
+        f = f + u * u_x_t[:, [i]]
 
     # laplacian? depending on the problem
     num = x_to_train_f.shape[0]
@@ -116,9 +118,9 @@ def loss_blackscholes(x, y, x_to_train_f, d, net):
         u_xx_i = autograd.grad(u_x_t, g, vec, create_graph=True)[0]
         u_xxi = u_xx_i[:, [i]]
 
-        lap = lap + 1/2*( sigma**2 ) * ( (x_to_train_f[:, i].view(-1, 1))**2 ) * u_xxi
+        lap = lap + u_xxi
 
-    f = f + lap - rate * u
+    f = f - lap
 
     ## forcing term
     ff = forcing(g)
@@ -135,10 +137,6 @@ def loss_blackscholes(x, y, x_to_train_f, d, net):
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print("device: ", device)
-
-# parameters of the PDE
-rate = 0.1
-sigma = 0.2
 
 # Hyperparameters for the neural network
 d = 100
@@ -179,12 +177,12 @@ for repeat in range(num_repeats):
     net = MLP(layers)
     net.to(device)
     optim = torch.optim.Adam(net.parameters(), lr=lr)
-    record[0, repeat] = loss_blackscholes(x, y, x_to_train_f, d, net)[1].detach()
+    record[0, repeat] = loss_burgers(x, y, x_to_train_f, d, net)[1].detach()
 
     for itr in range(1, niters + 1):
 
         optim.zero_grad()
-        loss = loss_blackscholes(x, y, x_to_train_f, d, net)[1]
+        loss = loss_burgers(x, y, x_to_train_f, d, net)[1]
         loss.backward()
         optim.step()
         record[itr, repeat] = loss.detach()
@@ -246,18 +244,20 @@ for repeat in range(num_repeats):
         frequency=frequency,
         average=average,
     )
-    record[0, repeat] = loss_blackscholes(x, y, x_to_train_f, d, net)[1].detach()
+    record[0, repeat] = loss_burgers(x, y, x_to_train_f, d, net)[1].detach()
 
+    _last_loss = [None]
     for itr in range(1, niters + 1):
 
         def closure():
             optim.zero_grad()
-            res, loss = loss_blackscholes(x, y, x_to_train_f, d, net)
+            _, loss = loss_burgers(x, y, x_to_train_f, d, net)
             loss.backward()
+            _last_loss[0] = loss
             return loss
 
         optim.step(closure)
-        loss = loss_blackscholes(x, y, x_to_train_f, d, net)[1]
+        loss = _last_loss[0]
         record[itr, repeat] = loss.detach()
 
         if itr % print_freq == 0:
@@ -309,18 +309,20 @@ for repeat in range(num_repeats):
     net.to(device)
     optim = torch.optim.Adam(net.parameters(), lr=lr)
     accelerate(optim, frequency=20)
-    record[0, repeat] = loss_blackscholes(x, y, x_to_train_f, d, net)[1].detach()
+    record[0, repeat] = loss_burgers(x, y, x_to_train_f, d, net)[1].detach()
 
+    _last_loss = [None]
     for itr in range(1, niters + 1):
 
         def closure():
             optim.zero_grad()
-            res, loss = loss_blackscholes(x, y, x_to_train_f, d, net)
+            res, loss = loss_burgers(x, y, x_to_train_f, d, net)
             loss.backward()
+            _last_loss[0] = loss
             return res, loss
 
         optim.step(closure)
-        loss = loss_blackscholes(x, y, x_to_train_f, d, net)[1]
+        loss = _last_loss[0]
         record[itr, repeat] = loss.detach()
 
         if itr % print_freq == 0:

@@ -1,3 +1,7 @@
+import sys
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
+
 import time
 import math
 from math import pi
@@ -240,17 +244,19 @@ for repeat in range(num_repeats):
     )
     record[0, repeat] = loss_helmholtz(x, y, x_to_train_f, d, net)[1].detach()
 
+    _last_loss = [None]
     aux_start_time = time.time()
     for itr in range(1, niters_AADL + 1):
 
         def closure():
             optim.zero_grad()
-            res, loss = loss_helmholtz(x, y, x_to_train_f, d, net)
+            _, loss = loss_helmholtz(x, y, x_to_train_f, d, net)
             loss.backward()
+            _last_loss[0] = loss
             return loss
 
         optim.step(closure)
-        loss = loss_helmholtz(x, y, x_to_train_f, d, net)[1]
+        loss = _last_loss[0]
         record[itr, repeat] = loss.detach()
         times[itr, repeat] = time.time() - aux_start_time
 
@@ -296,7 +302,7 @@ for repeat in range(num_repeats):
 
     x_val = ((2 * torch.rand(500, d)) - 1).to(device)
     y_val = data_gen(x_val)
-    y_Val = y_val.to(device)
+    y_val = y_val.to(device)
 
     net = MLP(layers)
     net.to(device)
@@ -304,16 +310,18 @@ for repeat in range(num_repeats):
     accelerate(optim, relaxation=1.0, store_each_nth=store_each_nth, history_depth=history_depth, frequency=1)
     record[0, repeat] = loss_helmholtz(x, y, x_to_train_f, d, net)[1].detach()
 
+    _last_loss = [None]
     aux_start_time = time.time()
     for itr in range(1, niters_DDAADL + 1):
         def closure():
             optim.zero_grad()
             res, loss = loss_helmholtz(x, y, x_to_train_f, d, net)
             loss.backward()
+            _last_loss[0] = loss
             return res, loss
 
         optim.step(closure)
-        loss = loss_helmholtz(x, y, x_to_train_f, d, net)[1]
+        loss = _last_loss[0]
         record[itr, repeat] = loss.detach()
         times[itr, repeat] = time.time() - aux_start_time
 

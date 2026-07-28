@@ -1,3 +1,7 @@
+import sys
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
+
 import torch
 import torch.optim as optim
 
@@ -39,11 +43,11 @@ def trainingdata(N_u,N_f):
 
     #Boundary Condition x = -1 and 0 =< t =<1
     bottomedge_x = np.hstack((X[:,0][:,None], T[:,0][:,None])) #L2
-    bottomedge_u = usol[-1,:][:,None]
+    bottomedge_u = usol[0,:][:,None]
 
     #Boundary Condition x = 1 and 0 =< t =<1
     topedge_x = np.hstack((X[:,-1][:,None], T[:,0][:,None])) #L3
-    topedge_u = usol[0,:][:,None]
+    topedge_u = usol[-1,:][:,None]
 
     all_X_u_train = np.vstack([leftedge_x, bottomedge_x, topedge_x]) # X_u_train [456,2] (456 = 256(L1)+100(L2)+100(L3))
     all_u_train = np.vstack([leftedge_u, bottomedge_u, topedge_u])   #corresponding u [456x1]
@@ -165,14 +169,16 @@ for repeat in range(num_repeats):
     loss = loss_burgers(X_u_train, u_train, X_f_train, net)[0]
     record[0,repeat] = loss.detach()
 
+    _last_loss = [None]
     for itr in range(1, niters + 1):
         def closure():
             optim.zero_grad()
-            loss, res = loss_burgers(X_u_train, u_train, X_f_train, net)
+            loss, _ = loss_burgers(X_u_train, u_train, X_f_train, net)
             loss.backward()
+            _last_loss[0] = loss
             return loss
         optim.step(closure)
-        loss = loss_burgers(X_u_train, u_train, X_f_train, net)[0]
+        loss = _last_loss[0]
         
         record[itr,repeat] = loss.detach()
 
@@ -221,14 +227,16 @@ for repeat in range(num_repeats):
     loss = loss_burgers(X_u_train, u_train, X_f_train, net)[0]
     record[0,repeat] = loss.detach()
 
+    _last_loss = [None]
     for itr in range(1, niters + 1):
         def closure():
             optim.zero_grad()
             loss, res = loss_burgers(X_u_train, u_train, X_f_train, net)
             loss.backward()
+            _last_loss[0] = loss
             return res, loss
         optim.step(closure)
-        loss = loss_burgers(X_u_train, u_train, X_f_train, net)[0]
+        loss = _last_loss[0]
         record[itr,repeat] = loss.detach()
 
         # print

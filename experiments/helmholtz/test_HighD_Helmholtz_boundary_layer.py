@@ -1,3 +1,7 @@
+import sys
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
+
 import time
 import math
 import torch
@@ -81,14 +85,14 @@ def bound_data(n, d):
     # sample on boundary
     # n -- number of samples on boundary, may not be precise
     # d -- dimension of problem
-    # consider a boxed region with each axis from -1 to 1
+    # consider a boxed region with each axis from 0 to 1
     n0 = math.floor(n / d / 2)  # number of samples on each face of boundary
     x = torch.empty(n, d)
     for i in range(d):
-        x0 = 2 * torch.rand(n0, d) - 1.
-        x0[:, i] = -1.;
+        x0 = torch.rand(n0, d)
+        x0[:, i] = 0.;
         x[i * 2 * n0:i * 2 * n0 + n0, :] = x0
-        x0 = 2 * torch.rand(n0, d) - 1
+        x0 = torch.rand(n0, d)
         x0[:, i] = 1.;
         x[i * 2 * n0 + n0:(i + 1) * 2 * n0, :] = x0
 
@@ -190,9 +194,9 @@ for repeat in range(num_repeats):
     x = bound_data(N_u, d).to(device)
     y = data_gen(x, A, beta, eps)
     y = y.to(device)
-    x_to_train_f = ((2 * torch.rand(N_f, d)) - 1).to(device)
+    x_to_train_f = torch.rand(N_f, d).to(device)
 
-    x_val = ((2 * torch.rand(500, d)) - 1).to(device)
+    x_val = torch.rand(500, d).to(device)
     y_val = data_gen(x_val, A, beta, eps)
     y_val = y_val.to(device)
 
@@ -219,7 +223,7 @@ for repeat in range(num_repeats):
             x = bound_data(N_u, d).to(device)
             y = data_gen(x, A, beta, eps)
             y = y.to(device)
-            x_to_train_f = ((2 * torch.rand(N_f, d)) - 1).to(device)
+            x_to_train_f = torch.rand(N_f, d).to(device)
             # clear_hist(optim)
 
         # change learning rate
@@ -249,9 +253,9 @@ for repeat in range(num_repeats):
     x = bound_data(N_u, d).to(device)
     y = data_gen(x, A, beta, eps)
     y = y.to(device)
-    x_to_train_f = ((2 * torch.rand(N_f, d)) - 1).to(device)
+    x_to_train_f = torch.rand(N_f, d).to(device)
 
-    x_val = ((2 * torch.rand(500, d )) - 1).to(device)
+    x_val = torch.rand(500, d).to(device)
     y_val = data_gen(x_val, A, beta, eps)
     y_val = y_val.to(device)
 
@@ -269,18 +273,19 @@ for repeat in range(num_repeats):
     )
     record[0, repeat] = loss_helmholtz(x, y, x_to_train_f, d, net, A, beta, eps)[1].detach()
 
+    _last_loss = [None]
     aux_start_time = time.time()
     for itr in range(1, niters_AADL + 1):
 
         def closure():
             optim.zero_grad()
-            res, loss = loss_helmholtz(x, y, x_to_train_f, d, net, A, beta, eps)
+            _, loss = loss_helmholtz(x, y, x_to_train_f, d, net, A, beta, eps)
             loss.backward()
+            _last_loss[0] = loss
             return loss
 
         optim.step(closure)
-        optim.step()
-        loss = loss_helmholtz(x, y, x_to_train_f, d, net, A, beta, eps)[1]
+        loss = _last_loss[0]
         record[itr, repeat] = loss.detach()
         times[itr, repeat] = time.time() - aux_start_time
 
@@ -292,7 +297,7 @@ for repeat in range(num_repeats):
             x = bound_data(N_u, d).to(device)
             y = data_gen(x, A, beta, eps)
             y = y.to(device)
-            x_to_train_f = ((2 * torch.rand(N_f, d)) - 1).to(device)
+            x_to_train_f = torch.rand(N_f, d).to(device)
             # clear_hist(optim)
 
         # change learning rate
@@ -322,9 +327,9 @@ for repeat in range(num_repeats):
     x = bound_data(N_u, d).to(device)
     y = data_gen(x, A, beta, eps)
     y = y.to(device)
-    x_to_train_f = ((2 * torch.rand(N_f, d)) - 1).to(device)
+    x_to_train_f = torch.rand(N_f, d).to(device)
 
-    x_val = ((2 * torch.rand(500, d)) - 1).to(device)
+    x_val = torch.rand(500, d).to(device)
     y_val = data_gen(x_val, A, beta, eps)
     y_val = y_val.to(device)
 
@@ -334,16 +339,18 @@ for repeat in range(num_repeats):
     accelerate(optim, relaxation=1.0, store_each_nth=store_each_nth, history_depth=history_depth, frequency=1)
     record[0, repeat] = loss_helmholtz(x, y, x_to_train_f, d, net, A, beta, eps)[1].detach()
 
+    _last_loss = [None]
     aux_start_time = time.time()
     for itr in range(1, niters_DDAADL + 1):
         def closure():
             optim.zero_grad()
             res, loss = loss_helmholtz(x, y, x_to_train_f, d, net, A, beta, eps)
             loss.backward()
+            _last_loss[0] = loss
             return res, loss
 
         optim.step(closure)
-        loss = loss_helmholtz(x, y, x_to_train_f, d, net, A, beta, eps)[1]
+        loss = _last_loss[0]
         record[itr, repeat] = loss.detach()
         times[itr, repeat] = time.time() - aux_start_time
 
@@ -355,7 +362,7 @@ for repeat in range(num_repeats):
             x = bound_data(N_u, d).to(device)
             y = data_gen(x, A, beta, eps)
             y = y.to(device)
-            x_to_train_f = ((2 * torch.rand(N_f, d)) - 1).to(device)
+            x_to_train_f = torch.rand(N_f, d).to(device)
             clear_hist(optim)
 
         # change learning rate
