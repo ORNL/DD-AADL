@@ -1,42 +1,68 @@
 from __future__ import print_function
-from itertools import count
-import sys
 from types import MethodType
 from collections import deque
 
-
 import torch
-import torch.nn.functional as F
-from torch.nn.utils import parameters_to_vector, vector_to_parameters
+from torch.nn.utils import parameters_to_vector
+
+
+def vector_to_parameters(vec, parameters):
+    """Drop-in replacement for ``torch.nn.utils.vector_to_parameters`` that
+    uses ``param.data.copy_()`` instead of ``param.data =`` so that the memory
+    format of existing parameter tensors is preserved (fix ported from AADL)."""
+    pointer = 0
+    for param in parameters:
+        num_param = param.numel()
+        param.data.copy_(vec[pointer:pointer + num_param].view_as(param).data)
+        pointer += num_param
 
 
 def anderson_qr_fun(X, R, relaxation=1.0, regularization=0.0):
-    # Solve the least square problem with qr factorization
-    # Anderson Acceleration type 2
-    # Tinput both the parameters X and residual R
-    # Return acceleration result
+    # Anderson Acceleration type 2 (data-driven: PDE residuals drive the solve)
+    # X: parameter history matrix  [n_params, history]
+    # R: PDE residual history matrix [n_res,   history]
+    # Returns the accelerated parameter vector.
 
     assert X.ndim == 2, "X must be a matrix"
     assert R.ndim == 2, "R must be a matrix"
     assert regularization >= 0.0, "regularization for least-squares must be >=0.0"
 
-    # Compute residuals
-    DX = X[:, 1:] - X[:, :-1]  # DX[:,i] =  X[:,i+1] -  X[:,i]
-    DR = R[:, 1:] - R[:, :-1]  # DR[:,i] =  R[:,i+1] -  R[:,i]
+    DX = X[:, 1:] - X[:, :-1]   # DX[:,i] = X[:,i+1] - X[:,i]
+    DR = R[:, 1:] - R[:, :-1]   # DR[:,i] = R[:,i+1] - R[:,i]
+    b  = R[:, -1]                # target: last residual
 
+    # --- Column equilibration (ported from AADL) ----------------------------
+    # Scale each column of DR to unit L2 norm before the solve, then undo
+    # after.  This improves the condition number of the least-squares problem
+    # at negligible cost and is critical for deep history buffers.
+    scale = DR.norm(dim=0)
+    safe_scale = torch.where(scale > 0, scale, torch.ones_like(scale))
+    A_s = DR / safe_scale
+
+    # --- Build system (optionally augmented for Tikhonov regularization) ----
     if regularization == 0.0:
-        # solve unconstrained least-squares problem
-        gamma = torch.linalg.lstsq(DR, R[:, -1]).solution
+        A   = A_s
+        rhs = b
     else:
-        # solve augmented least-squares for Tykhonov regularization
-        rhs = R[:, -1].unsqueeze(1)
-        expanded_rhs = torch.cat((rhs, torch.zeros(DR.size(1), 1)))
-        expanded_matrix = torch.cat(
-            (DR, torch.sqrt(torch.tensor(regularization)) * torch.eye(DR.size(1)))
-        )  # sqrt here?
-        gamma = torch.linalg.lstsq(expanded_matrix, expanded_rhs).solution
+        sqrt_reg = torch.sqrt(torch.tensor(regularization, device=A_s.device, dtype=A_s.dtype))
+        eye      = torch.eye(A_s.size(1), device=A_s.device, dtype=A_s.dtype)
+        zero_pad = torch.zeros(A_s.size(1), device=A_s.device, dtype=A_s.dtype)
+        A   = torch.cat((A_s, sqrt_reg * eye), dim=0)
+        rhs = torch.cat((b,   zero_pad))
 
-    # compute acceleration
+    # --- QR + triangular solve (ported from AADL) ---------------------------
+    # Faster and more numerically stable than lstsq for tall-skinny A.
+    # Also fixes a shape inconsistency: the old regularised path returned
+    # gamma with shape [k, 1] while the unconstrained path returned [k].
+    Q, R_qr = torch.linalg.qr(A, mode='reduced')
+    y = torch.linalg.solve_triangular(
+        R_qr, (Q.mT @ rhs).unsqueeze(-1), upper=True
+    ).squeeze(-1)
+
+    # Undo column scaling to recover the true mixing vector
+    gamma = y / safe_scale
+
+    # --- Extrapolation ------------------------------------------------------
     extr = X[:, -1] - torch.matmul(DX, gamma)
 
     if relaxation != 1:
@@ -81,16 +107,23 @@ def accelerate(
     return optimizer
 
 
-# TODO: add acceeleration removal
 def remove_acceleration(optimizer):
+    if not getattr(optimizer, "acc", False):
+        return optimizer
     optimizer.acc = False
     optimizer.step = optimizer.orig_step
+    # clean up all dynamically attached attributes
+    for attr in [
+        "orig_step", "acc_relaxation", "acc_regularization",
+        "acc_history_depth", "acc_store_each_nth", "acc_frequency",
+        "acc_call_counter", "acc_store_counter", "acc_param_hist", "res_hist",
+    ]:
+        optimizer.__dict__.pop(attr, None)
     return optimizer
 
 
 def clear_hist(optimizer):
-    # clear history when resampling
-    print("clear history at ", optimizer.acc_store_counter)
+    # clear history when resampling (e.g. after re-drawing collocation points)
     optimizer.acc_param_hist = [
         deque([], maxlen=optimizer.acc_history_depth) for _ in optimizer.param_groups
     ]
@@ -98,17 +131,28 @@ def clear_hist(optimizer):
 
 
 def accelerated_step(self, closure):
-    # check for bugs
     if closure is None:
-        print("Unable to perform acceleration without closure")
-        sys.exit()
+        raise RuntimeError(
+            "DD-AADL requires a closure that returns (residual, loss). "
+            "Call accelerated_step(closure) with a valid closure."
+        )
 
     self.orig_step(closure)
 
-    res, loss = closure()  # calculate the residual
-    # add current parameters to the history
     self.acc_store_counter += 1
-    if self.acc_store_counter % self.acc_store_each_nth == 0:
+    self.acc_call_counter += 1
+
+    should_store = (self.acc_store_counter % self.acc_store_each_nth == 0)
+    should_accelerate = (self.acc_call_counter % self.acc_frequency == 0)
+
+    # avoid an extra closure call on steps where neither storage nor acceleration fires
+    if not should_store and not should_accelerate:
+        return
+
+    res, loss = closure()  # calculate the residual once, only when needed
+
+    # add current parameters to the history
+    if should_store:
         for group, group_hist in zip(self.param_groups, self.acc_param_hist):
             group_hist.append(
                 parameters_to_vector(group["params"]).detach()
@@ -117,34 +161,33 @@ def accelerated_step(self, closure):
         self.res_hist.append(res.detach())  # residual from current network parameters
 
     # perform acceleration
-    self.acc_call_counter += 1
-    if self.acc_call_counter % self.acc_frequency == 0:
+    if should_accelerate:
         for group, group_hist in zip(self.param_groups, self.acc_param_hist):
             if len(group_hist) >= 3:
-                # make matrix of updates from the history list
-                X = torch.stack(list(group_hist), dim=1)
-                R = torch.stack(list(self.res_hist), dim=1)
-                acc_param = anderson_qr_fun(
-                    X, R, self.acc_relaxation, self.acc_regularization
-                )
+                # build history matrices and solve for the accelerated candidate
+                # (pure tensor arithmetic — no gradient tracking needed)
+                with torch.no_grad():
+                    X = torch.stack(list(group_hist), dim=1)
+                    R = torch.stack(list(self.res_hist), dim=1)
+                    acc_param = anderson_qr_fun(
+                        X, R, self.acc_relaxation, self.acc_regularization
+                    )
+                    vector_to_parameters(acc_param, group["params"])
 
-                # check performance
-                vector_to_parameters(acc_param, group["params"])
+                # evaluate candidate (closure must run with gradient tracking
+                # because it calls loss.backward() internally)
                 _, new_loss = closure()
-                if new_loss < loss:
-                    group_hist.pop()
-                    group_hist.append(acc_param)
 
-                else:
-                    # revert to non-accelerated params
-                    vector_to_parameters(group_hist[-1], group["params"])
+                with torch.no_grad():
+                    if new_loss < loss:
+                        group_hist.pop()
+                        group_hist.append(acc_param)
+                    else:
+                        # revert to non-accelerated params
+                        vector_to_parameters(group_hist[-1], group["params"])
 
         final_res, final_loss = closure()
         if final_loss < loss:
-            print(
-                "acceleration working at step %5d, improve loss by %.5f"
-                % (self.acc_call_counter, loss - final_loss)
-            )
-
-            self.res_hist.pop()
-            self.res_hist.append(final_res.detach())
+            with torch.no_grad():
+                self.res_hist.pop()
+                self.res_hist.append(final_res.detach())
