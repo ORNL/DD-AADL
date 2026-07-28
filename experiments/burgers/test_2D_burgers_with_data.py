@@ -7,7 +7,7 @@ import torch.optim as optim
 
 import numpy as np
 import time
-from pyDOE import lhs         #Latin Hypercube Sampling
+from pydoe import lhs         #Latin Hypercube Sampling
 import scipy.io
 import argparse
 
@@ -19,7 +19,8 @@ from src.anderson_acceleration import *
 import AADL as AADL
 
 # Data Prep
-data = scipy.io.loadmat('/Users/7ml/Documents/NSF-MSGI/XingjianLi_work/DataDrivenAcceleration/Data/burgers_shock_mu_01_pi.mat')
+_DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'Data')
+data = scipy.io.loadmat(os.path.join(_DATA_DIR, 'burgers_shock_mu_01_pi.mat'))
 x = data['x']                                   # 256 points between -1 and 1 [256x1]
 t = data['t']                                   # 100 time points between 0 and 1 [100x1]
 usol = data['usol']                             # solution of 256x100 grid points
@@ -172,11 +173,12 @@ for repeat in range(num_repeats):
     _last_loss = [None]
     for itr in range(1, niters + 1):
         def closure():
-            optim.zero_grad()
-            loss, _ = loss_burgers(X_u_train, u_train, X_f_train, net)
-            loss.backward()
-            _last_loss[0] = loss
-            return loss
+            with torch.enable_grad():
+                optim.zero_grad()
+                loss, _ = loss_burgers(X_u_train, u_train, X_f_train, net)
+                loss.backward()
+                _last_loss[0] = loss
+                return loss
         optim.step(closure)
         loss = _last_loss[0]
         

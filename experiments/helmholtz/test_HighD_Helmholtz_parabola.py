@@ -237,11 +237,12 @@ for repeat in range(num_repeats):
     for itr in range(1, niters + 1):
 
         def closure():
-            optim.zero_grad()
-            _, loss = loss_helmholtz(x, y, x_to_train_f, d, net)
-            loss.backward()
-            _last_loss[0] = loss
-            return loss
+            with torch.enable_grad():
+                optim.zero_grad()
+                _, loss = loss_helmholtz(x, y, x_to_train_f, d, net)
+                loss.backward()
+                _last_loss[0] = loss
+                return loss
 
         optim.step(closure)
         loss = _last_loss[0]

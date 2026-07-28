@@ -7,3 +7,4 @@ matplotlib>=3.7.0
 # Installs directly from the upstream repository.
 # Pin to a specific commit for reproducibility:
 AADL @ git+https://github.com/allaffa/AADL.git@5a381725e88213a32bea8499cf2b49ef7f7b24d4
+pydoe>=1.3.0
