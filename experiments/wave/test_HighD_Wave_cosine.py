@@ -17,104 +17,145 @@ import AADL as AADL
 
 # ## Problem Setup
 #
-# Consider Black-Scholes Equation
+# Consider the Wave Equation (hyperbolic, scalar)
 #
-# $$ u_t + r (x \cdot \nabla_x u) + \frac{\sigma^2}{2} (x^2 \cdot \nabla^2_x u) - r u = f $$
+# $$ u_{tt} - c^2 \Delta_x u = f $$
+#
+# This is the canonical hyperbolic PDE.  PINNs are known to struggle here
+# due to the *causality* issue: the loss on later times is computed without
+# respecting that information propagates from earlier times.  This makes
+# it a genuine stress test for acceleration methods.
 #
 # Exact solution (Method of Manufactured Solutions):
 #
-# $$ u = \exp\!\left(-t - \sum_{i=1}^{d-1} x_i^2\right) $$
+# $$ u = e^{-t} \prod_{i=1}^{d-1} \cos\!\left(\frac{\pi x_i}{2}\right) $$
 #
-# Domain: [-2, 2]^{d-1} x [0, 1]
-# Boundary conditions: non-zero on all spatial faces (Gaussian).
+# Domain: [-1, 1]^{d-1} x [0, 1]
+# Boundary conditions:
+#   * Dirichlet: u = 0 on x_i = ±1   (cos vanishes there)
+#   * Neumann:   u_t = -u  at  t = 0   (initial velocity condition)
+#   * Initial condition:  u = exact solution at t = 0
 #
 # Key derivatives:
-#   u_{x_i}     = -2*x_i * u
-#   u_{x_i x_i} = (-2 + 4*x_i^2) * u
-#   u_t         = -u
+#   u_t   = -u
+#   u_tt  = u
+#   u_{x_i x_i} = -(pi/2)^2 u   =>  Delta_x u = -(d-1)*(pi/2)^2 * u
 #
-# Forcing term:
-#   f = -u  +  r*sum_i(-2*x_i^2*u)  +  sigma^2/2*sum_i(x_i^2*(-2+4*x_i^2)*u)  -  r*u
-#     = u * (-(1+r))  +  u * sum_i [ (-2r - sigma^2)*x_i^2  +  2*sigma^2*x_i^4 ]
+# Forcing (PDE residual must vanish):
+#   f = u_{tt} - c^2 * Delta_x u
+#     = u + c^2 * (d-1)*(pi/2)^2 * u
+#     = u * (1 + c^2 * (d-1) * pi^2/4)
+#
+# Choosing c^2 = 1 this simplifies to f = u * (1 + (d-1)*pi^2/4).
+#
+# Note: large c (fast wave speed) makes the problem stiff and PINN training
+# harder — try c=2 or c=5 to probe the acceleration benefit.
 
 
 def data_gen(x):
-    # exact solution to Black-Scholes equation
+    """Exact solution to the wave equation."""
     d = x.shape[1]
     xx = x[:, :d - 1]
-    sol = torch.exp(-x[:, -1].view(-1, 1) - torch.sum(xx ** 2, dim=1).view(-1, 1))
+    sol = (torch.exp(-x[:, -1].view(-1, 1))
+           * torch.prod(torch.cos(math.pi / 2 * xx), dim=1).view(-1, 1))
     return sol
 
 
-def forcing(x):
-    # forcing term computed analytically via MMS
+def forcing(x, c):
+    """Forcing term f computed analytically via MMS."""
     d = x.shape[1]
     u = data_gen(x)
-    xx = x[:, :d - 1]
-    f = -(1 + rate) * u
-    f = f + u * torch.sum((-2 * rate - sigma ** 2) * xx ** 2 + 2 * sigma ** 2 * xx ** 4, dim=1).view(-1, 1)
-    return f
+    return u * (1.0 + c ** 2 * (d - 1) * math.pi ** 2 / 4.0)
 
 
 def bound_data(n, d):
-    # sample on boundary of [-2,2]^{d-1} x [0,1]
-    # spatial faces at ±2; terminal condition at t=1
+    """Sample on boundary of [-1,1]^{d-1} x [0,1].
+
+    Includes:
+      * Dirichlet walls x_i = ±1   (spatial boundary)
+      * Initial slice t = 0        (initial position  u(x,0))
+      * Initial velocity slice t=0 is enforced via an extra IC loss below
+    """
     n0 = math.floor(n / d / 2)
     x = torch.empty(n, d)
     for i in range(d - 1):
-        x0 = torch.cat((4 * torch.rand(n0, d - 1) - 2, torch.rand(n0, 1)), dim=1)
-        x0[:, i] = -2.
+        x0 = torch.cat((2 * torch.rand(n0, d - 1) - 1, torch.rand(n0, 1)), dim=1)
+        x0[:, i] = -1.
         x[i * 2 * n0:i * 2 * n0 + n0, :] = x0
-        x0 = torch.cat((4 * torch.rand(n0, d - 1) - 2, torch.rand(n0, 1)), dim=1)
-        x0[:, i] = 2.
+        x0 = torch.cat((2 * torch.rand(n0, d - 1) - 1, torch.rand(n0, 1)), dim=1)
+        x0[:, i] = 1.
         x[i * 2 * n0 + n0:(i + 1) * 2 * n0, :] = x0
     n1 = n - 2 * n0 * (d - 1)
-    x0 = torch.cat((4 * torch.rand(n1, d - 1) - 2, torch.rand(n1, 1)), dim=1)
-    x0[:, -1] = 1.
+    x0 = torch.cat((2 * torch.rand(n1, d - 1) - 1, torch.rand(n1, 1)), dim=1)
+    x0[:, -1] = 0.
     x[n - n1:, :] = x0
     return x
 
 
-def loss_blackscholes(x, y, x_to_train_f, d, net):
+def loss_wave(x, y, x_to_train_f, d, net, c):
     """
-    :param x: boundary / terminal condition points
+    :param x: boundary / initial condition points
     :param y: exact solution values at x
     :param x_to_train_f: interior collocation points
     :param d: problem dimension (d-1 spatial + 1 time)
     :param net: neural network
+    :param c: wave speed (scalar)
     :return: (residual vector, scalar loss)
     """
     loss_fun = nn.MSELoss()
     loss_BC = loss_fun(net.forward(x), y)
 
+    # ---- PDE residual ----
     g = x_to_train_f.clone()
     g.requires_grad = True
 
     u = net.forward(g)
-    u_x_t = autograd.grad(
+    # first-order gradients
+    u_xt = autograd.grad(
         u, g,
         torch.ones([x_to_train_f.shape[0], 1]).to(g.device),
         retain_graph=True, create_graph=True,
     )[0]
 
-    u_t = u_x_t[:, [-1]]
-    f = u_t
-    for i in range(d - 1):
-        f = f + rate * g[:, i].view(-1, 1) * u_x_t[:, [i]]
+    u_t = u_xt[:, [-1]]
 
+    # second time derivative u_tt
+    u_tt = autograd.grad(
+        u_t, g,
+        torch.ones([x_to_train_f.shape[0], 1]).to(g.device),
+        retain_graph=True, create_graph=True,
+    )[0][:, [-1]]
+
+    # spatial Laplacian
     num = x_to_train_f.shape[0]
     lap = torch.zeros(num, 1).to(g.device)
     for i in range(d - 1):
-        vec = torch.zeros_like(u_x_t)
+        vec = torch.zeros_like(u_xt)
         vec[:, i] = torch.ones(num)
-        u_xx_i = autograd.grad(u_x_t, g, vec, create_graph=True)[0]
-        lap = lap + 0.5 * sigma ** 2 * (g[:, i].view(-1, 1) ** 2) * u_xx_i[:, [i]]
+        u_xxi = autograd.grad(u_xt, g, vec, create_graph=True)[0][:, [i]]
+        lap = lap + u_xxi
 
-    f = f + lap - rate * u
+    f = u_tt - c ** 2 * lap
+    ff = forcing(g, c)
 
-    ff = forcing(g)
     loss_PDE = loss_fun(f, ff)
-    loss = loss_BC + loss_PDE
+
+    # ---- initial velocity condition u_t(x, 0) = -u(x, 0) ----
+    # sample t=0 points
+    n_ic = 200
+    x_ic = torch.cat((2 * torch.rand(n_ic, d - 1, device=g.device) - 1,
+                      torch.zeros(n_ic, 1, device=g.device)), dim=1)
+    x_ic.requires_grad = True
+    u_ic = net.forward(x_ic)
+    u_ic_t = autograd.grad(
+        u_ic, x_ic,
+        torch.ones([n_ic, 1], device=g.device),
+        retain_graph=True, create_graph=True,
+    )[0][:, [-1]]
+    y_ic_t = -data_gen(x_ic)
+    loss_IC_vel = loss_fun(u_ic_t, y_ic_t)
+
+    loss = loss_BC + loss_PDE + loss_IC_vel
 
     res_PDE = f - ff
     res_BC = net.forward(x) - y
@@ -126,9 +167,8 @@ def loss_blackscholes(x, y, x_to_train_f, d, net):
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print("device: ", device)
 
-# PDE parameters
-rate  = 0.1
-sigma = 0.2
+# Wave speed — try c=2 or c=5 for a harder stress test
+c = 1.0
 
 d = 100
 layers = np.array([d, 50, 50, 50, 1])
@@ -147,9 +187,6 @@ frequency = 5
 resample = 500
 average = True
 
-def _sample_interior(N, d, device):
-    return torch.cat((4 * torch.rand(N, d - 1) - 2, torch.rand(N, 1)), dim=1).to(device)
-
 # ---------------------------------------------------------------------------
 # Loop 1: Adam baseline
 # ---------------------------------------------------------------------------
@@ -162,18 +199,18 @@ for repeat in range(num_repeats):
     torch.manual_seed(repeat)
     x = bound_data(N_u, d).to(device)
     y = data_gen(x).to(device)
-    x_to_train_f = _sample_interior(N_f, d, device)
-    x_val = _sample_interior(500, d, device)
+    x_to_train_f = torch.cat((2 * torch.rand(N_f, d - 1) - 1, torch.rand(N_f, 1)), dim=1).to(device)
+    x_val = torch.cat((2 * torch.rand(500, d - 1) - 1, torch.rand(500, 1)), dim=1).to(device)
     y_val = data_gen(x_val).to(device)
 
     net = MLP(layers)
     net.to(device)
     optim = torch.optim.Adam(net.parameters(), lr=lr)
-    record[0, repeat] = loss_blackscholes(x, y, x_to_train_f, d, net)[1].detach()
+    record[0, repeat] = loss_wave(x, y, x_to_train_f, d, net, c)[1].detach()
 
     for itr in range(1, niters + 1):
         optim.zero_grad()
-        loss = loss_blackscholes(x, y, x_to_train_f, d, net)[1]
+        loss = loss_wave(x, y, x_to_train_f, d, net, c)[1]
         loss.backward()
         optim.step()
         record[itr, repeat] = loss.detach()
@@ -182,7 +219,7 @@ for repeat in range(num_repeats):
         if itr % resample == 0:
             x = bound_data(N_u, d).to(device)
             y = data_gen(x).to(device)
-            x_to_train_f = _sample_interior(N_f, d, device)
+            x_to_train_f = torch.cat((2 * torch.rand(N_f, d - 1) - 1, torch.rand(N_f, 1)), dim=1).to(device)
 
     err_abs, err_rel = val_metrics(net, x_val, y_val)
     err_average += err_rel
@@ -202,8 +239,8 @@ for repeat in range(num_repeats):
     torch.manual_seed(repeat)
     x = bound_data(N_u, d).to(device)
     y = data_gen(x).to(device)
-    x_to_train_f = _sample_interior(N_f, d, device)
-    x_val = _sample_interior(500, d, device)
+    x_to_train_f = torch.cat((2 * torch.rand(N_f, d - 1) - 1, torch.rand(N_f, 1)), dim=1).to(device)
+    x_val = torch.cat((2 * torch.rand(500, d - 1) - 1, torch.rand(500, 1)), dim=1).to(device)
     y_val = data_gen(x_val).to(device)
 
     net = MLP(layers)
@@ -218,13 +255,13 @@ for repeat in range(num_repeats):
         frequency=frequency,
         average=average,
     )
-    record[0, repeat] = loss_blackscholes(x, y, x_to_train_f, d, net)[1].detach()
+    record[0, repeat] = loss_wave(x, y, x_to_train_f, d, net, c)[1].detach()
 
     _last_loss = [None]
     for itr in range(1, niters + 1):
         def closure():
             optim.zero_grad()
-            _, loss = loss_blackscholes(x, y, x_to_train_f, d, net)
+            _, loss = loss_wave(x, y, x_to_train_f, d, net, c)
             loss.backward()
             _last_loss[0] = loss
             return loss
@@ -236,7 +273,7 @@ for repeat in range(num_repeats):
         if itr % resample == 0:
             x = bound_data(N_u, d).to(device)
             y = data_gen(x).to(device)
-            x_to_train_f = _sample_interior(N_f, d, device)
+            x_to_train_f = torch.cat((2 * torch.rand(N_f, d - 1) - 1, torch.rand(N_f, 1)), dim=1).to(device)
 
     err_abs, err_rel = val_metrics(net, x_val, y_val)
     err_average += err_rel
@@ -256,8 +293,8 @@ for repeat in range(num_repeats):
     torch.manual_seed(repeat)
     x = bound_data(N_u, d).to(device)
     y = data_gen(x).to(device)
-    x_to_train_f = _sample_interior(N_f, d, device)
-    x_val = _sample_interior(500, d, device)
+    x_to_train_f = torch.cat((2 * torch.rand(N_f, d - 1) - 1, torch.rand(N_f, 1)), dim=1).to(device)
+    x_val = torch.cat((2 * torch.rand(500, d - 1) - 1, torch.rand(500, 1)), dim=1).to(device)
     y_val = data_gen(x_val).to(device)
 
     net = MLP(layers)
@@ -265,13 +302,13 @@ for repeat in range(num_repeats):
     optim = torch.optim.Adam(net.parameters(), lr=lr)
     accelerate(optim, relaxation=1.0, store_each_nth=store_each_nth,
                history_depth=history_depth, frequency=frequency)
-    record[0, repeat] = loss_blackscholes(x, y, x_to_train_f, d, net)[1].detach()
+    record[0, repeat] = loss_wave(x, y, x_to_train_f, d, net, c)[1].detach()
 
     _last_loss = [None]
     for itr in range(1, niters + 1):
         def closure():
             optim.zero_grad()
-            res, loss = loss_blackscholes(x, y, x_to_train_f, d, net)
+            res, loss = loss_wave(x, y, x_to_train_f, d, net, c)
             loss.backward()
             _last_loss[0] = loss
             return res, loss
@@ -283,7 +320,7 @@ for repeat in range(num_repeats):
         if itr % resample == 0:
             x = bound_data(N_u, d).to(device)
             y = data_gen(x).to(device)
-            x_to_train_f = _sample_interior(N_f, d, device)
+            x_to_train_f = torch.cat((2 * torch.rand(N_f, d - 1) - 1, torch.rand(N_f, 1)), dim=1).to(device)
             clear_hist(optim)
 
     err_abs, err_rel = val_metrics(net, x_val, y_val)
@@ -319,5 +356,5 @@ plt.ylim([1.0e-8, 1.0e2])
 plt.legend()
 plt.xlabel("Number of iterations")
 plt.ylabel("Loss")
-plt.title(f"{d}d Black-Scholes Equation – Gaussian solution")
-fig.savefig("HighD_BlackScholes_gaussian.jpg", dpi=500)
+plt.title(f"{d}d Wave Equation (c={c}) – Cosine-decay solution")
+fig.savefig("HighD_Wave_cosine.jpg", dpi=500)

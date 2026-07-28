@@ -10,6 +10,7 @@ import torch.nn as nn
 from src.NN_models import *
 from src.anderson_acceleration import *
 from src.utils import count_parameters
+from src.experiment_utils import val_metrics, save_records
 
 import copy
 
@@ -138,7 +139,7 @@ N_u = 400
 N_f = 4000
 lr = 0.01
 print_freq = 100
-num_repeats = 1
+num_repeats = 5
 acceleration_type = "anderson"
 relaxation = 0.5
 history_depth = 10
@@ -195,11 +196,11 @@ for repeat in range(num_repeats):
         """
 
     # Validation
-    err = torch.mean(torch.abs(y_val - net(x_val)))
-    err_average += err
-    print("Validation results, error in absolute value: ", err)
+    err_abs, err_rel = val_metrics(net, x_val, y_val)
+    err_average += err_rel
+    print(f"Validation: L1={err_abs:.4e}  rel-L2={err_rel:.4e}")
 
-print("average validation error: ", err_average / 1)
+print("average validation error: ", err_average / num_repeats)
 elapsed = time.time() - start_time
 print("Training time: %.2f" % (elapsed))
 
@@ -265,11 +266,11 @@ for repeat in range(num_repeats):
         """
 
     # Validation
-    err = torch.mean(torch.abs(y_val - net(x_val)))
-    err_average += err
-    print("Validation results, error in absolute value: ", err)
+    err_abs, err_rel = val_metrics(net, x_val, y_val)
+    err_average += err_rel
+    print(f"Validation: L1={err_abs:.4e}  rel-L2={err_rel:.4e}")
 
-print("average validation error: ", err_average / 1)
+print("average validation error: ", err_average / num_repeats)
 elapsed = time.time() - start_time
 print("Training time: %.2f" % (elapsed))
 
@@ -327,15 +328,16 @@ for repeat in range(num_repeats):
         """
 
     # Validation
-    err = torch.mean(torch.abs(y_val - net(x_val)))
-    err_average += err
-    print("Validation results, error in absolute value: ", err)
+    err_abs, err_rel = val_metrics(net, x_val, y_val)
+    err_average += err_rel
+    print(f"Validation: L1={err_abs:.4e}  rel-L2={err_rel:.4e}")
 
-print("average validation error: ", err_average / 1)
+print("average validation error: ", err_average / num_repeats)
 elapsed = time.time() - start_time
 print("Training time: %.2f" % (elapsed))
 
 record_DDAADL = record
+save_records(__file__, record_default, record_AADL, record_DDAADL)
 
 import math
 import matplotlib.pyplot as plt
