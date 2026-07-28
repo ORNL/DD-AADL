@@ -1,0 +1,9 @@
+# Core scientific stack
+torch>=2.0.0
+numpy>=1.24.0
+matplotlib>=3.7.0
+
+# AADL (Type-1 Anderson acceleration baseline)
+# Installs directly from the upstream repository.
+# Pin to a specific commit for reproducibility:
+AADL @ git+https://github.com/allaffa/AADL.git@5a381725e88213a32bea8499cf2b49ef7f7b24d4
